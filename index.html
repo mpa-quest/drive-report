@@ -275,10 +275,6 @@
     <p style="font-size:13px; font-weight:700; color:#C2410C; margin-bottom:12px;">⚠️ スタッフ未登録です。以下から登録してください。</p>
     <div style="display:flex; flex-direction:column; gap:8px;">
       <div style="display:flex; flex-direction:column; gap:4px;">
-        <label style="font-size:11px; font-weight:600; color:#6B7280;">スタッフID<span style="color:#DC2626; margin-left:3px;">*</span></label>
-        <input type="text" id="regStaffId" placeholder="例：S001" style="border:1.5px solid #E5E7EB; border-radius:8px; padding:9px 12px; font-size:15px; font-family:inherit;">
-      </div>
-      <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:11px; font-weight:600; color:#6B7280;">氏名<span style="color:#DC2626; margin-left:3px;">*</span></label>
         <input type="text" id="regStaffName" placeholder="例：山田 太郎" style="border:1.5px solid #E5E7EB; border-radius:8px; padding:9px 12px; font-size:15px; font-family:inherit;">
       </div>
@@ -303,6 +299,17 @@
         <option>車両001</option>
         <option>車両002</option>
         <option>車両003</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- 会社 -->
+  <section>
+    <h2>会社</h2>
+    <div class="field">
+      <label>会社<span class="required">*</span></label>
+      <select id="company" required>
+        <option value="">読み込み中...</option>
       </select>
     </div>
   </section>
@@ -390,12 +397,8 @@
   <section>
     <h2>その他</h2>
     <div class="field">
-      <label>電車通勤</label>
-      <select id="trainCommute">
-        <option value="">—</option>
-        <option>あり</option>
-        <option>なし</option>
-      </select>
+      <label>電車通勤（円）</label>
+      <input type="number" id="trainCommute" placeholder="例：320" min="0">
     </div>
     <div class="field">
       <label>備考</label>
@@ -424,6 +427,7 @@
   let lineUserId = "";
   let staffId = "";
   let staffName = "";
+  let companyIds = [];
 
   // =====================
   // LIFF初期化
@@ -454,6 +458,21 @@
           staffName = data.staffName;
           document.getElementById("userName").textContent = staffName;
           document.getElementById("staffInfo").textContent = `スタッフID：${staffId}`;
+
+          // 会社プルダウンを構築
+          companyIds = data.companyIds || [];
+          const companySelect = document.getElementById("company");
+          companySelect.innerHTML = "<option value="">選択してください</option>";
+          companyIds.forEach(c => {
+            const opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = `${c.id}_${c.name}`;
+            companySelect.appendChild(opt);
+          });
+          if (companyIds.length === 0) {
+            companySelect.innerHTML = "<option value="">担当会社なし</option>";
+            companySelect.disabled = true;
+          }
         } else {
           document.getElementById("userName").textContent = profile.displayName;
           document.getElementById("registerSection").style.display = "block";
@@ -472,11 +491,10 @@
   // 新規スタッフ登録
   // =====================
   document.getElementById("registerBtn").addEventListener("click", async () => {
-    const regStaffId = document.getElementById("regStaffId").value.trim();
     const regStaffName = document.getElementById("regStaffName").value.trim();
 
-    if (!regStaffId || !regStaffName) {
-      alert("スタッフIDと氏名を入力してください。");
+    if (!regStaffName) {
+      alert("氏名を入力してください。");
       return;
     }
 
@@ -490,14 +508,13 @@
         body: JSON.stringify({
           action: "registerStaff",
           lineUserId,
-          staffId: regStaffId,
           staffName: regStaffName,
         }),
       });
       const data = await res.json();
 
       if (data.success) {
-        staffId = regStaffId;
+        staffId = data.staffId;
         staffName = regStaffName;
         document.getElementById("userName").textContent = staffName;
         document.getElementById("staffInfo").textContent = "スタッフID：" + staffId;
@@ -586,6 +603,7 @@
       meterBefore: document.getElementById("meterBefore").value,
       meterAfter: document.getElementById("meterAfter").value,
       distance: document.getElementById("distance").textContent,
+      company: document.getElementById("company").value,
       trainCommute: document.getElementById("trainCommute").value,
       memo: document.getElementById("memo").value,
     };
