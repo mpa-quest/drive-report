@@ -462,7 +462,7 @@
           // 会社プルダウンを構築
           companyIds = data.companyIds || [];
           const companySelect = document.getElementById("company");
-          companySelect.innerHTML = "<option value="">選択してください</option>";
+          companySelect.innerHTML = "<option value=''>選択してください</option>";
           companyIds.forEach(c => {
             const opt = document.createElement("option");
             opt.value = c.id;
@@ -470,7 +470,7 @@
             companySelect.appendChild(opt);
           });
           if (companyIds.length === 0) {
-            companySelect.innerHTML = "<option value="">担当会社なし</option>";
+            companySelect.innerHTML = "<option value=''>担当会社なし</option>";
             companySelect.disabled = true;
           }
         } else {
