@@ -67,11 +67,6 @@
       margin-top: 2px;
     }
 
-    .user-badge .info .unregistered {
-      font-size: 12px;
-      color: #DC2626;
-    }
-
     section {
       margin: 0 16px 12px;
       background: white;
@@ -256,13 +251,6 @@
     .toast.show {
       transform: translateX(-50%) translateY(0);
     }
-
-    .error-msg {
-      font-size: 11px;
-      color: #DC2626;
-      margin-top: 2px;
-      display: none;
-    }
   </style>
 </head>
 <body>
@@ -427,8 +415,8 @@
   // =====================
   // 設定（変更してください）
   // =====================
-  const LIFF_ID = "2010510070-mvaJV1XE"; // ← LIFF IDに書き換え
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec"; // ← GASデプロイURLに書き換え
+  const LIFF_ID = "2010510070-mvaJV1XE";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
 
   // =====================
   // グローバル変数
@@ -526,11 +514,7 @@
       btn.disabled = false;
       btn.textContent = "登録する";
     }
-  
-    })
-    .catch(err => {
-      console.error("LIFF init error", err);
-    });
+  });
 
   // =====================
   // 今日の日付をデフォルト設定
@@ -612,7 +596,6 @@
         body: JSON.stringify(payload),
       });
 
-      // トースト表示
       const toast = document.getElementById("toast");
       toast.classList.add("show");
       setTimeout(() => {
