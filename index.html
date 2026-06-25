@@ -278,8 +278,23 @@
   <div class="info">
     <div class="name" id="userName">読み込み中...</div>
     <div class="id" id="staffInfo"></div>
-    <div class="unregistered" id="unregisteredMsg" style="display:none">
-      ⚠️ スタッフ未登録。管理者に連絡してください。
+  </div>
+</div>
+
+<!-- 新規登録フォーム（未登録時のみ表示） -->
+<div id="registerSection" style="display:none; margin: 0 16px 12px;">
+  <div style="background:#FFF7ED; border:1px solid #FED7AA; border-radius:12px; padding:16px;">
+    <p style="font-size:13px; font-weight:700; color:#C2410C; margin-bottom:12px;">⚠️ スタッフ未登録です。以下から登録してください。</p>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:11px; font-weight:600; color:#6B7280;">スタッフID<span style="color:#DC2626; margin-left:3px;">*</span></label>
+        <input type="text" id="regStaffId" placeholder="例：S001" style="border:1.5px solid #E5E7EB; border-radius:8px; padding:9px 12px; font-size:15px; font-family:inherit;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:11px; font-weight:600; color:#6B7280;">氏名<span style="color:#DC2626; margin-left:3px;">*</span></label>
+        <input type="text" id="regStaffName" placeholder="例：山田 太郎" style="border:1.5px solid #E5E7EB; border-radius:8px; padding:9px 12px; font-size:15px; font-family:inherit;">
+      </div>
+      <button type="button" id="registerBtn" style="background:#C2410C; color:white; border:none; border-radius:8px; padding:12px; font-size:15px; font-weight:700; font-family:inherit; margin-top:4px;">登録する</button>
     </div>
   </div>
 </div>
@@ -453,13 +468,65 @@
           document.getElementById("staffInfo").textContent = `スタッフID：${staffId}`;
         } else {
           document.getElementById("userName").textContent = profile.displayName;
-          document.getElementById("unregisteredMsg").style.display = "block";
+          document.getElementById("registerSection").style.display = "block";
           document.getElementById("submitBtn").disabled = true;
         }
       } catch(e) {
         document.getElementById("userName").textContent = profile.displayName;
         document.getElementById("staffInfo").textContent = "情報取得エラー";
       }
+    })
+    .catch(err => {
+      console.error("LIFF init error", err);
+    });
+
+  // =====================
+  // 新規スタッフ登録
+  // =====================
+  document.getElementById("registerBtn").addEventListener("click", async () => {
+    const regStaffId = document.getElementById("regStaffId").value.trim();
+    const regStaffName = document.getElementById("regStaffName").value.trim();
+
+    if (!regStaffId || !regStaffName) {
+      alert("スタッフIDと氏名を入力してください。");
+      return;
+    }
+
+    const btn = document.getElementById("registerBtn");
+    btn.disabled = true;
+    btn.textContent = "登録中...";
+
+    try {
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "registerStaff",
+          lineUserId,
+          staffId: regStaffId,
+          staffName: regStaffName,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        staffId = regStaffId;
+        staffName = regStaffName;
+        document.getElementById("userName").textContent = staffName;
+        document.getElementById("staffInfo").textContent = "スタッフID：" + staffId;
+        document.getElementById("registerSection").style.display = "none";
+        document.getElementById("submitBtn").disabled = false;
+        alert("登録完了しました！");
+      } else {
+        alert("登録に失敗しました。もう一度お試しください。");
+        btn.disabled = false;
+        btn.textContent = "登録する";
+      }
+    } catch(e) {
+      alert("通信エラーが発生しました。");
+      btn.disabled = false;
+      btn.textContent = "登録する";
+    }
+  
     })
     .catch(err => {
       console.error("LIFF init error", err);
