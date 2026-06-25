@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>運行報告</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+      background: #F5F7FA;
+      color: #2D2D2D;
+      min-height: 100vh;
+      padding-bottom: 40px;
+    }
+
+    header {
+      background: #1A6B3C;
+      color: white;
+      padding: 16px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    header p {
+      font-size: 12px;
+      opacity: 0.75;
+      margin-top: 2px;
+    }
+
+    .user-badge {
+      background: #F0FFF6;
+      border: 1px solid #B7E4C7;
+      border-radius: 8px;
+      margin: 16px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-badge img {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .user-badge .info .name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1A6B3C;
+    }
+
+    .user-badge .info .id {
+      font-size: 11px;
+      color: #6B7280;
+      margin-top: 2px;
+    }
+
+    .user-badge .info .unregistered {
+      font-size: 12px;
+      color: #DC2626;
+    }
+
+    section {
+      margin: 0 16px 12px;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    }
+
+    section h2 {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1A6B3C;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 12px 16px 8px;
+      border-bottom: 1px solid #F0F0F0;
+      background: #FAFAFA;
+    }
+
+    .field {
+      padding: 10px 16px;
+      border-bottom: 1px solid #F5F5F5;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field:last-child { border-bottom: none; }
+
+    .field label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6B7280;
+      letter-spacing: 0.03em;
+    }
+
+    .field label .required {
+      color: #DC2626;
+      margin-left: 3px;
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      border: 1.5px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 15px;
+      font-family: inherit;
+      color: #2D2D2D;
+      background: white;
+      transition: border-color 0.15s;
+      -webkit-appearance: none;
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus {
+      outline: none;
+      border-color: #1A6B3C;
+    }
+
+    .field textarea {
+      height: 72px;
+      resize: none;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid #F5F5F5;
+    }
+
+    .field-row:last-child { border-bottom: none; }
+
+    .field-row .sub-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field-row .sub-field label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6B7280;
+    }
+
+    .field-row .sub-field label .required {
+      color: #DC2626;
+      margin-left: 3px;
+    }
+
+    .field-row .sub-field input {
+      width: 100%;
+      border: 1.5px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 15px;
+      font-family: inherit;
+      color: #2D2D2D;
+      background: white;
+      transition: border-color 0.15s;
+      -webkit-appearance: none;
+    }
+
+    .field-row .sub-field input:focus {
+      outline: none;
+      border-color: #1A6B3C;
+    }
+
+    .auto-field {
+      padding: 10px 16px;
+      border-bottom: 1px solid #F5F5F5;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .auto-field label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6B7280;
+    }
+
+    .auto-field .value {
+      font-size: 15px;
+      color: #6B7280;
+      background: #F5F7FA;
+      border: 1.5px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 9px 12px;
+    }
+
+    .submit-wrap {
+      padding: 20px 16px 0;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      background: #1A6B3C;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: inherit;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button[type="submit"]:active {
+      background: #145530;
+      transform: scale(0.98);
+    }
+
+    button[type="submit"]:disabled {
+      background: #9CA3AF;
+      cursor: not-allowed;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1A6B3C;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      transition: transform 0.3s ease;
+      z-index: 100;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .error-msg {
+      font-size: 11px;
+      color: #DC2626;
+      margin-top: 2px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🚗 運行報告</h1>
+  <p>必須項目をすべて入力して送信してください</p>
+</header>
+
+<!-- ユーザー情報バッジ -->
+<div class="user-badge">
+  <img id="userIcon" src="" alt="" style="display:none">
+  <div class="info">
+    <div class="name" id="userName">読み込み中...</div>
+    <div class="id" id="staffInfo"></div>
+    <div class="unregistered" id="unregisteredMsg" style="display:none">
+      ⚠️ スタッフ未登録。管理者に連絡してください。
+    </div>
+  </div>
+</div>
+
+<form id="reportForm">
+
+  <!-- 基本情報 -->
+  <section>
+    <h2>基本情報</h2>
+    <div class="field">
+      <label>日付<span class="required">*</span></label>
+      <input type="date" id="date" required>
+    </div>
+    <div class="field">
+      <label>車両<span class="required">*</span></label>
+      <select id="vehicle" required>
+        <option value="">選択してください</option>
+        <option>車両001</option>
+        <option>車両002</option>
+        <option>車両003</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- 運行区間 -->
+  <section>
+    <h2>運行区間</h2>
+    <div class="field">
+      <label>出発地<span class="required">*</span></label>
+      <select id="departure" required>
+        <option value="">選択してください</option>
+        <option>〇〇営業所</option>
+        <option>△△センター</option>
+        <option>その他</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>行き先<span class="required">*</span></label>
+      <input type="text" id="destination" placeholder="例：△△病院" required>
+    </div>
+    <div class="field">
+      <label>到着地</label>
+      <input type="text" id="arrival" placeholder="例：〇〇営業所">
+    </div>
+  </section>
+
+  <!-- 時間 -->
+  <section>
+    <h2>時間</h2>
+    <div class="field-row">
+      <div class="sub-field">
+        <label>出発時間<span class="required">*</span></label>
+        <input type="time" id="departureTime" required>
+      </div>
+      <div class="sub-field">
+        <label>到着時間<span class="required">*</span></label>
+        <input type="time" id="arrivalTime" required>
+      </div>
+    </div>
+    <div class="auto-field">
+      <label>稼働時間（自動計算）</label>
+      <div class="value" id="workingHours">—</div>
+    </div>
+  </section>
+
+  <!-- メーター -->
+  <section>
+    <h2>メーター</h2>
+    <div class="field-row">
+      <div class="sub-field">
+        <label>走行前<span class="required">*</span></label>
+        <input type="number" id="meterBefore" placeholder="12345" required>
+      </div>
+      <div class="sub-field">
+        <label>走行後<span class="required">*</span></label>
+        <input type="number" id="meterAfter" placeholder="12389" required>
+      </div>
+    </div>
+    <div class="auto-field">
+      <label>走行距離（自動計算）</label>
+      <div class="value" id="distance">—</div>
+    </div>
+  </section>
+
+  <!-- 利用者情報 -->
+  <section>
+    <h2>利用者情報</h2>
+    <div class="field">
+      <label>利用者<span class="required">*</span></label>
+      <input type="text" id="passenger" placeholder="例：山田 太郎" required>
+    </div>
+    <div class="field">
+      <label>利用目的<span class="required">*</span></label>
+      <select id="purpose" required>
+        <option value="">選択してください</option>
+        <option>通院</option>
+        <option>送迎</option>
+        <option>買い物</option>
+        <option>その他</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- その他 -->
+  <section>
+    <h2>その他</h2>
+    <div class="field">
+      <label>電車通勤</label>
+      <select id="trainCommute">
+        <option value="">—</option>
+        <option>あり</option>
+        <option>なし</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>備考</label>
+      <textarea id="memo" placeholder="特記事項があれば入力してください"></textarea>
+    </div>
+  </section>
+
+  <div class="submit-wrap">
+    <button type="submit" id="submitBtn">送信する</button>
+  </div>
+
+</form>
+
+<div class="toast" id="toast">✅ 送信しました</div>
+
+<script>
+  // =====================
+  // 設定（変更してください）
+  // =====================
+  const LIFF_ID = "2010510070-mvaJV1XE"; // ← LIFF IDに書き換え
+  const GAS_URL = "YOUR_GAS_URL"; // ← GASデプロイURLに書き換え
+
+  // =====================
+  // グローバル変数
+  // =====================
+  let lineUserId = "";
+  let staffId = "";
+  let staffName = "";
+
+  // =====================
+  // LIFF初期化
+  // =====================
+  liff.init({ liffId: LIFF_ID })
+    .then(async () => {
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const profile = await liff.getProfile();
+      lineUserId = profile.userId;
+
+      // アイコン表示
+      if (profile.pictureUrl) {
+        const img = document.getElementById("userIcon");
+        img.src = profile.pictureUrl;
+        img.style.display = "block";
+      }
+
+      // GASからスタッフ情報を取得
+      try {
+        const res = await fetch(`${GAS_URL}?action=getStaff&lineUserId=${lineUserId}`);
+        const data = await res.json();
+        if (data.found) {
+          staffId = data.staffId;
+          staffName = data.staffName;
+          document.getElementById("userName").textContent = staffName;
+          document.getElementById("staffInfo").textContent = `スタッフID：${staffId}`;
+        } else {
+          document.getElementById("userName").textContent = profile.displayName;
+          document.getElementById("unregisteredMsg").style.display = "block";
+          document.getElementById("submitBtn").disabled = true;
+        }
+      } catch(e) {
+        document.getElementById("userName").textContent = profile.displayName;
+        document.getElementById("staffInfo").textContent = "情報取得エラー";
+      }
+    })
+    .catch(err => {
+      console.error("LIFF init error", err);
+    });
+
+  // =====================
+  // 今日の日付をデフォルト設定
+  // =====================
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  document.getElementById("date").value = `${yyyy}-${mm}-${dd}`;
+
+  // =====================
+  // 稼働時間の自動計算
+  // =====================
+  function calcWorkingHours() {
+    const dep = document.getElementById("departureTime").value;
+    const arr = document.getElementById("arrivalTime").value;
+    if (!dep || !arr) { document.getElementById("workingHours").textContent = "—"; return; }
+    const [dh, dm] = dep.split(":").map(Number);
+    const [ah, am] = arr.split(":").map(Number);
+    let total = (ah * 60 + am) - (dh * 60 + dm);
+    if (total < 0) total += 24 * 60;
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    document.getElementById("workingHours").textContent = `${h}時間${m}分`;
+  }
+
+  document.getElementById("departureTime").addEventListener("change", calcWorkingHours);
+  document.getElementById("arrivalTime").addEventListener("change", calcWorkingHours);
+
+  // =====================
+  // 走行距離の自動計算
+  // =====================
+  function calcDistance() {
+    const before = Number(document.getElementById("meterBefore").value);
+    const after = Number(document.getElementById("meterAfter").value);
+    if (!before || !after) { document.getElementById("distance").textContent = "—"; return; }
+    const dist = after - before;
+    document.getElementById("distance").textContent = dist >= 0 ? `${dist} km` : "⚠️ 数値を確認してください";
+  }
+
+  document.getElementById("meterBefore").addEventListener("input", calcDistance);
+  document.getElementById("meterAfter").addEventListener("input", calcDistance);
+
+  // =====================
+  // フォーム送信
+  // =====================
+  document.getElementById("reportForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const btn = document.getElementById("submitBtn");
+    btn.disabled = true;
+    btn.textContent = "送信中...";
+
+    const payload = {
+      action: "submitReport",
+      lineUserId,
+      staffId,
+      staffName,
+      date: document.getElementById("date").value,
+      vehicle: document.getElementById("vehicle").value,
+      departure: document.getElementById("departure").value,
+      destination: document.getElementById("destination").value,
+      arrival: document.getElementById("arrival").value,
+      departureTime: document.getElementById("departureTime").value,
+      arrivalTime: document.getElementById("arrivalTime").value,
+      workingHours: document.getElementById("workingHours").textContent,
+      passenger: document.getElementById("passenger").value,
+      purpose: document.getElementById("purpose").value,
+      meterBefore: document.getElementById("meterBefore").value,
+      meterAfter: document.getElementById("meterAfter").value,
+      distance: document.getElementById("distance").textContent,
+      trainCommute: document.getElementById("trainCommute").value,
+      memo: document.getElementById("memo").value,
+    };
+
+    try {
+      await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      // トースト表示
+      const toast = document.getElementById("toast");
+      toast.classList.add("show");
+      setTimeout(() => {
+        if (liff.isInClient()) {
+          liff.closeWindow();
+        } else {
+          toast.classList.remove("show");
+          btn.disabled = false;
+          btn.textContent = "送信する";
+        }
+      }, 1500);
+
+    } catch(err) {
+      alert("送信に失敗しました。もう一度お試しください。");
+      btn.disabled = false;
+      btn.textContent = "送信する";
+    }
+  });
+</script>
+</body>
+</html>
