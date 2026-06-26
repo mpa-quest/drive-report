@@ -465,7 +465,7 @@
           companySelect.innerHTML = "<option value=''>選択してください</option>";
           companyIds.forEach(c => {
             const opt = document.createElement("option");
-            opt.value = `${c.id}_${c.name}`;
+            opt.value = c.id;
             opt.textContent = `${c.id}_${c.name}`;
             companySelect.appendChild(opt);
           });
