@@ -294,12 +294,14 @@
     </div>
     <div class="field">
       <label>車両<span class="required">*</span></label>
-      <select id="vehicle" required>
+      <select id="vehicle" required onchange="toggleOther('vehicle', 'vehicleOther')">
         <option value="">選択してください</option>
-        <option>車両001</option>
-        <option>車両002</option>
-        <option>車両003</option>
+        <option>アルファード</option>
+        <option>レクサスLM</option>
+        <option>レクサスLS</option>
+        <option>その他</option>
       </select>
+      <input type="text" id="vehicleOther" placeholder="車両名を入力" style="display:none; margin-top:6px;">
     </div>
   </section>
 
@@ -319,13 +321,15 @@
     <h2>運行区間</h2>
     <div class="field">
       <label>出発地<span class="required">*</span></label>
-      <select id="departure" required>
+      <select id="departure" required onchange="toggleOther('departure', 'departureOther')">
         <option value="">選択してください</option>
-        <option>〇〇営業所</option>
-        <option>△△センター</option>
+        <option>社長自宅</option>
+        <option>会社</option>
+        <option>ドライバー自宅</option>
         <option>駐車場</option>
         <option>その他</option>
       </select>
+      <input type="text" id="departureOther" placeholder="出発地を入力" style="display:none; margin-top:6px;">
     </div>
     <div class="field">
       <label>行き先<span class="required">*</span></label>
@@ -333,7 +337,15 @@
     </div>
     <div class="field">
       <label>到着地</label>
-      <input type="text" id="arrival" placeholder="例：〇〇営業所">
+      <select id="arrival" onchange="toggleOther('arrival', 'arrivalOther')">
+        <option value="">選択してください</option>
+        <option>社長自宅</option>
+        <option>会社</option>
+        <option>ドライバー自宅</option>
+        <option>駐車場</option>
+        <option>その他</option>
+      </select>
+      <input type="text" id="arrivalOther" placeholder="到着地を入力" style="display:none; margin-top:6px;">
     </div>
   </section>
 
@@ -384,12 +396,12 @@
     </div>
     <div class="field">
       <label>利用目的<span class="required">*</span><span style="font-size:10px; font-weight:400; color:#9CA3AF; margin-left:6px;">複数選択可</span></label>
-      <select id="purpose" multiple required style="height:132px;">
-        <option>通院</option>
+      <select id="purpose" multiple required style="height:99px;" onchange="toggleOther('purpose', 'purposeOther', true)">
         <option>送迎</option>
         <option>会食</option>
         <option>その他</option>
       </select>
+      <input type="text" id="purposeOther" placeholder="利用目的を入力" style="display:none; margin-top:6px;">
       <span id="purposeHint" style="font-size:10px; color:#9CA3AF; margin-top:2px;"></span>
       <script>
         (function() {
@@ -427,6 +439,44 @@
 
 <script>
   const LIFF_ID = "2010522430-YGmulMkA";
+
+  // =====================
+  // 「その他」選択時に手入力欄を表示するトグル
+  // =====================
+  function toggleOther(selectId, otherId, isMultiple) {
+    const sel = document.getElementById(selectId);
+    const inp = document.getElementById(otherId);
+    let isOther = false;
+    if (isMultiple) {
+      isOther = Array.from(sel.selectedOptions).some(o => o.value === "その他");
+    } else {
+      isOther = sel.value === "その他";
+    }
+    inp.style.display = isOther ? "block" : "none";
+    if (!isOther) inp.value = "";
+  }
+
+  // 「その他」の場合は手入力値を返す
+  function getFieldValue(selectId, otherId) {
+    const sel = document.getElementById(selectId);
+    if (sel.value === "その他") {
+      return document.getElementById(otherId).value.trim() || "その他";
+    }
+    return sel.value;
+  }
+
+  // 利用目的：複数選択＋「その他」の手入力を結合
+  function getPurposeValue() {
+    const sel = document.getElementById("purpose");
+    const selected = Array.from(sel.selectedOptions).map(o => o.value);
+    return selected.map(v => {
+      if (v === "その他") {
+        const other = document.getElementById("purposeOther").value.trim();
+        return other || "その他";
+      }
+      return v;
+    }).join("、");
+  }
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
 
   let lineUserId = "";
@@ -585,15 +635,15 @@
       staffId,
       staffName,
       date: document.getElementById("date").value,
-      vehicle: document.getElementById("vehicle").value,
-      departure: document.getElementById("departure").value,
+      vehicle: getFieldValue("vehicle", "vehicleOther"),
+      departure: getFieldValue("departure", "departureOther"),
       destination: document.getElementById("destination").value,
-      arrival: document.getElementById("arrival").value,
+      arrival: getFieldValue("arrival", "arrivalOther"),
       departureTime: document.getElementById("departureTime").value,
       arrivalTime: document.getElementById("arrivalTime").value,
       workingHours: document.getElementById("workingHours").textContent,
       passenger: document.getElementById("passenger").value,
-      purpose: Array.from(document.getElementById("purpose").selectedOptions).map(o => o.value).join("、"),
+      purpose: getPurposeValue(),
       meterBefore: document.getElementById("meterBefore").value,
       meterAfter: document.getElementById("meterAfter").value,
       distance: document.getElementById("distance").textContent,
