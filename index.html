@@ -390,7 +390,17 @@
         <option>会食</option>
         <option>その他</option>
       </select>
-      <span style="font-size:10px; color:#9CA3AF; margin-top:2px;">Ctrl（Mac: ⌘）を押しながらタップで複数選択</span>
+      <span id="purposeHint" style="font-size:10px; color:#9CA3AF; margin-top:2px;"></span>
+      <script>
+        (function() {
+          const hint = document.getElementById("purposeHint");
+          if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            hint.textContent = "📱 項目を長押しすると複数選択できます";
+          } else {
+            hint.textContent = "💻 Ctrl（Mac: ⌘）を押しながらクリックで複数選択できます";
+          }
+        })();
+      </script>
     </div>
   </section>
 
