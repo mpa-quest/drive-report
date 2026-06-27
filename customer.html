@@ -234,6 +234,92 @@
 
     #mainContent { display: none; }
     #logoutBtn   { display: none; }
+
+    /* ── 印刷ボタン ── */
+    .print-btn {
+      display: none;
+      margin: 0 16px 12px;
+      width: calc(100% - 32px);
+      background: white;
+      color: #1A6B3C;
+      border: 1.5px solid #1A6B3C;
+      border-radius: 10px;
+      padding: 11px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: inherit;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      text-align: center;
+    }
+    .print-btn:hover { background: #1A6B3C; color: white; }
+    .print-btn.visible { display: block; }
+
+    /* ── 印刷スタイル ── */
+    @media print {
+      @page {
+        size: A4 landscape;
+        margin: 12mm 10mm;
+      }
+
+      /* 印刷時に非表示にする要素 */
+      header, .filter-panel, .print-btn,
+      .spinner, .state-msg, #logoutBtn { display: none !important; }
+
+      body { background: white; padding: 0; }
+      #mainContent { display: block !important; }
+
+      /* 印刷ヘッダー */
+      .print-header {
+        display: flex !important;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+        border-bottom: 1.5px solid #1A6B3C;
+      }
+      .print-header .ph-company {
+        font-size: 14px;
+        font-weight: 700;
+        color: #1A6B3C;
+      }
+      .print-header .ph-period {
+        font-size: 12px;
+        color: #4B5563;
+      }
+      .print-header .ph-title {
+        font-size: 11px;
+        color: #9CA3AF;
+      }
+
+      /* サマリーバー */
+      .summary-bar {
+        display: flex !important;
+        margin: 0 0 8px !important;
+        padding: 6px 10px !important;
+        border-radius: 6px;
+      }
+      .summary-item .val { font-size: 14px !important; }
+      .summary-item .lbl { font-size: 9px !important; }
+
+      /* テーブル */
+      .table-wrap {
+        margin: 0 !important;
+        overflow: visible !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+      }
+      table {
+        min-width: unset !important;
+        width: 100% !important;
+        font-size: 9px !important;
+      }
+      thead th { padding: 5px 4px !important; font-size: 9px !important; }
+      tbody td { padding: 4px !important; white-space: normal !important; }
+      tfoot td { padding: 4px !important; font-size: 9px !important; }
+      tbody tr:hover { background: white !important; }
+    }
   </style>
 </head>
 <body>
@@ -259,6 +345,17 @@
 
 <!-- メインコンテンツ（認証後） -->
 <div id="mainContent">
+
+  <!-- 印刷時のみ表示されるヘッダー -->
+  <div class="print-header" style="display:none">
+    <span class="ph-company" id="printCompanyName"></span>
+    <span class="ph-period"  id="printPeriod"></span>
+    <span class="ph-title">運行記録照会</span>
+  </div>
+
+  <!-- 印刷ボタン（検索結果表示後に表示） -->
+  <button class="print-btn" id="printBtn" onclick="window.print()">🖨️ 印刷する（横向き・A4）</button>
+
   <div class="filter-panel">
     <div class="filter-row">
       <div class="filter-field">
@@ -456,6 +553,12 @@
 
     if (!password) { setView("init"); return; }
 
+    // 印刷ヘッダーに会社名・年月をセット
+    const session = (() => { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch(e) { return null; } })();
+    const companyNameForPrint = session ? session.companyName : "";
+    document.getElementById("printCompanyName").textContent = companyNameForPrint + " 様";
+    document.getElementById("printPeriod").textContent = year + "年" + String(month).padStart(2, "0") + "月分";
+
     setView("loading");
 
     try {
@@ -563,6 +666,7 @@
     document.getElementById("msgEmpty").classList.toggle("visible", state === "empty");
     document.getElementById("tableWrap").style.display = state === "table" ? "block" : "none";
     document.getElementById("summaryBar").classList.toggle("visible", state === "table");
+    document.getElementById("printBtn").classList.toggle("visible",   state === "table");
     document.getElementById("searchBtn").disabled = state === "loading";
   }
 </script>
