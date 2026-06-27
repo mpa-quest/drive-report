@@ -22,9 +22,27 @@
       position: sticky;
       top: 0;
       z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
-    header h1 { font-size: 17px; font-weight: 700; letter-spacing: 0.05em; }
-    header p  { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+    .header-left h1 { font-size: 17px; font-weight: 700; letter-spacing: 0.05em; }
+    .header-left p  { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+
+    .logout-btn {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.4);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,0.25); }
 
     /* ── パスワード画面 ── */
     .auth-wrap {
@@ -55,6 +73,7 @@
       font-size: 13px;
       color: #6B7280;
       text-align: center;
+      line-height: 1.6;
     }
     .auth-box input {
       width: 100%;
@@ -83,7 +102,7 @@
       cursor: pointer;
       transition: background 0.15s;
     }
-    .auth-box .auth-btn:active  { background: #145530; }
+    .auth-box .auth-btn:active   { background: #145530; }
     .auth-box .auth-btn:disabled { background: #9CA3AF; cursor: not-allowed; }
     .auth-error {
       font-size: 13px;
@@ -104,23 +123,15 @@
       flex-direction: column;
       gap: 12px;
     }
-
     .filter-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
-
-    .filter-field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
+    .filter-field { display: flex; flex-direction: column; gap: 4px; }
     .filter-field label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #6B7280;
-      letter-spacing: 0.03em;
+      font-size: 11px; font-weight: 600;
+      color: #6B7280; letter-spacing: 0.03em;
     }
     .filter-field select {
       width: 100%;
@@ -134,10 +145,7 @@
       -webkit-appearance: none;
       transition: border-color 0.15s;
     }
-    .filter-field select:focus {
-      outline: none;
-      border-color: #1A6B3C;
-    }
+    .filter-field select:focus { outline: none; border-color: #1A6B3C; }
 
     .search-btn {
       width: 100%;
@@ -170,21 +178,9 @@
       flex-wrap: wrap;
     }
     .summary-bar.visible { display: flex; }
-    .summary-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-    }
-    .summary-item .val {
-      font-size: 18px;
-      font-weight: 700;
-      color: #1A6B3C;
-    }
-    .summary-item .lbl {
-      font-size: 10px;
-      color: #6B7280;
-    }
+    .summary-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .summary-item .val { font-size: 18px; font-weight: 700; color: #1A6B3C; }
+    .summary-item .lbl { font-size: 10px; color: #6B7280; }
 
     /* ── テーブル ── */
     .table-wrap {
@@ -193,7 +189,6 @@
       border-radius: 12px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.07);
     }
-
     table {
       width: 100%;
       border-collapse: collapse;
@@ -201,71 +196,34 @@
       font-size: 12px;
       min-width: 900px;
     }
-
-    thead tr {
-      background: #1A6B3C;
-      color: white;
-    }
+    thead tr { background: #1A6B3C; color: white; }
     thead th {
-      padding: 10px 10px;
+      padding: 10px;
       text-align: left;
       font-weight: 600;
       font-size: 11px;
       letter-spacing: 0.04em;
       white-space: nowrap;
     }
-
-    tbody tr {
-      border-bottom: 1px solid #F0F0F0;
-      transition: background 0.1s;
-    }
+    tbody tr { border-bottom: 1px solid #F0F0F0; transition: background 0.1s; }
     tbody tr:last-child { border-bottom: none; }
     tbody tr:hover { background: #F0FFF6; }
-
-    tbody td {
-      padding: 9px 10px;
-      white-space: nowrap;
-      color: #2D2D2D;
-      vertical-align: middle;
-    }
-
-    tfoot tr {
-      background: #F0FFF6;
-      border-top: 2px solid #B7E4C7;
-    }
-    tfoot td {
-      padding: 9px 10px;
-      font-weight: 700;
-      font-size: 12px;
-      color: #1A6B3C;
-      white-space: nowrap;
-    }
+    tbody td { padding: 9px 10px; white-space: nowrap; color: #2D2D2D; vertical-align: middle; }
+    tfoot tr { background: #F0FFF6; border-top: 2px solid #B7E4C7; }
+    tfoot td { padding: 9px 10px; font-weight: 700; font-size: 12px; color: #1A6B3C; white-space: nowrap; }
 
     /* ── 状態表示 ── */
-    .state-msg {
-      text-align: center;
-      padding: 48px 20px;
-      color: #9CA3AF;
-      font-size: 14px;
-      display: none;
-    }
+    .state-msg { text-align: center; padding: 48px 20px; color: #9CA3AF; font-size: 14px; display: none; }
     .state-msg.visible { display: block; }
     .state-msg .icon { font-size: 32px; margin-bottom: 8px; }
 
     /* ── スピナー ── */
-    .spinner {
-      display: none;
-      text-align: center;
-      padding: 40px;
-      color: #6B7280;
-      font-size: 13px;
-    }
+    .spinner { display: none; text-align: center; padding: 40px; color: #6B7280; font-size: 13px; }
     .spinner.visible { display: block; }
     .spinner::before {
       content: "";
       display: block;
-      width: 28px;
-      height: 28px;
+      width: 28px; height: 28px;
       border: 3px solid #E5E7EB;
       border-top-color: #1A6B3C;
       border-radius: 50%;
@@ -274,15 +232,18 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── メインコンテンツ（認証後に表示） ── */
     #mainContent { display: none; }
+    #logoutBtn   { display: none; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>📋 運行記録照会</h1>
-  <p id="headerCompanyName">読み込み中...</p>
+  <div class="header-left">
+    <h1>📋 運行記録照会</h1>
+    <p id="headerCompanyName">読み込み中...</p>
+  </div>
+  <button class="logout-btn" id="logoutBtn">ログアウト</button>
 </header>
 
 <!-- パスワード認証画面 -->
@@ -298,8 +259,6 @@
 
 <!-- メインコンテンツ（認証後） -->
 <div id="mainContent">
-
-  <!-- フィルターパネル -->
   <div class="filter-panel">
     <div class="filter-row">
       <div class="filter-field">
@@ -314,7 +273,6 @@
     <button class="search-btn" id="searchBtn">検索する</button>
   </div>
 
-  <!-- サマリーバー -->
   <div class="summary-bar" id="summaryBar">
     <div class="summary-item">
       <span class="val" id="sumCount">0</span>
@@ -329,27 +287,23 @@
       <span class="lbl">総稼働時間</span>
     </div>
     <div class="summary-item">
-      <span class="val" id="sumTrain">0 円</span>
+      <span class="val" id="sumTrain">—</span>
       <span class="lbl">電車通勤合計</span>
     </div>
   </div>
 
-  <!-- スピナー -->
   <div class="spinner" id="spinner">検索中...</div>
 
-  <!-- 初期メッセージ -->
   <div class="state-msg visible" id="msgInit">
     <div class="icon">🔍</div>
     月を選択して検索してください
   </div>
 
-  <!-- 0件メッセージ -->
   <div class="state-msg" id="msgEmpty">
     <div class="icon">📭</div>
     該当する運行記録がありません
   </div>
 
-  <!-- テーブル -->
   <div class="table-wrap" id="tableWrap" style="display:none">
     <table>
       <thead>
@@ -376,22 +330,34 @@
       <tfoot id="tableFoot"></tfoot>
     </table>
   </div>
-
-</div><!-- /mainContent -->
+</div>
 
 <script>
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
+  const SESSION_KEY = "customer_session";
 
   // ── URLパラメータから会社IDを取得 ──
-  const params    = new URLSearchParams(window.location.search);
-  const companyId = (params.get("company") || "").trim();
+  const urlParams = new URLSearchParams(window.location.search);
+  const companyId = (urlParams.get("company") || "").trim();
 
-  // 会社IDがなければエラー表示
   if (!companyId) {
     document.getElementById("authScreen").innerHTML =
       '<div style="text-align:center;padding:60px 20px;color:#9CA3AF;">' +
       '<div style="font-size:32px;margin-bottom:12px;">⚠️</div>' +
       'URLが正しくありません。<br>担当者にお問い合わせください。</div>';
+  }
+
+  // ── sessionStorageから認証状態を復元 ──
+  const saved = (() => {
+    try {
+      const s = sessionStorage.getItem(SESSION_KEY);
+      return s ? JSON.parse(s) : null;
+    } catch(e) { return null; }
+  })();
+
+  if (saved && saved.companyId === companyId && saved.password) {
+    // セッションが残っていればそのまま認証済み状態に
+    showMainContent(saved.companyName, saved.password);
   }
 
   // ── パスワード認証 ──
@@ -414,10 +380,13 @@
       const data = await res.json();
 
       if (data.verified) {
-        // 認証成功 → メイン画面へ
-        document.getElementById("authScreen").style.display = "none";
-        document.getElementById("mainContent").style.display = "block";
-        document.getElementById("headerCompanyName").textContent = data.companyName;
+        // sessionStorageに保存（companyId・password・companyNameを保持）
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+          companyId,
+          password,
+          companyName: data.companyName,
+        }));
+        showMainContent(data.companyName, password);
       } else {
         document.getElementById("authError").classList.add("visible");
         document.getElementById("passwordInput").value = "";
@@ -432,7 +401,29 @@
     }
   }
 
-  // ── 年月プルダウンを初期化 ──
+  function showMainContent(companyName, password) {
+    document.getElementById("authScreen").style.display    = "none";
+    document.getElementById("mainContent").style.display  = "block";
+    document.getElementById("logoutBtn").style.display    = "block";
+    document.getElementById("headerCompanyName").textContent = companyName + " 様";
+    // 検索時に使うパスワードをメモリ上にのみ保持
+    window._customerPassword = password;
+  }
+
+  // ── ログアウト ──
+  document.getElementById("logoutBtn").addEventListener("click", () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    window._customerPassword = null;
+    document.getElementById("authScreen").style.display   = "flex";
+    document.getElementById("mainContent").style.display  = "none";
+    document.getElementById("logoutBtn").style.display    = "none";
+    document.getElementById("headerCompanyName").textContent = "読み込み中...";
+    document.getElementById("passwordInput").value = "";
+    document.getElementById("summaryBar").classList.remove("visible");
+    setView("init");
+  });
+
+  // ── 年月プルダウン初期化（当月デフォルト）──
   const now      = new Date();
   const curYear  = now.getFullYear();
   const curMonth = now.getMonth() + 1;
@@ -455,20 +446,33 @@
     selMonth.appendChild(opt);
   }
 
-  // ── 検索 ──
+  // ── 検索（getCustomerRecordsを使用・パスワードをサーバーで照合）──
   document.getElementById("searchBtn").addEventListener("click", search);
 
   async function search() {
-    const year  = parseInt(selYear.value);
-    const month = parseInt(selMonth.value);
+    const year     = parseInt(selYear.value);
+    const month    = parseInt(selMonth.value);
+    const password = window._customerPassword;
+
+    if (!password) { setView("init"); return; }
 
     setView("loading");
 
     try {
-      const url  = `${GAS_URL}?action=getRecords&companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}`;
+      const url  = `${GAS_URL}?action=getCustomerRecords`
+        + `&companyId=${encodeURIComponent(companyId)}`
+        + `&password=${encodeURIComponent(password)}`
+        + `&year=${year}&month=${month}`;
       const res  = await fetch(url);
       const data = await res.json();
 
+      if (data.error === "unauthorized") {
+        // セッション切れ・不正アクセス → ログアウト
+        sessionStorage.removeItem(SESSION_KEY);
+        alert("認証エラーが発生しました。再度ログインしてください。");
+        location.reload();
+        return;
+      }
       if (!data.records || data.records.length === 0) {
         setView("empty");
         return;
@@ -483,7 +487,7 @@
     }
   }
 
-  // ── テーブル描画（records.htmlと同一ロジック）──
+  // ── テーブル描画 ──
   function renderTable(records) {
     const tbody = document.getElementById("tableBody");
     const tfoot = document.getElementById("tableFoot");
@@ -494,12 +498,11 @@
     let totalTrain    = 0;
 
     records.forEach(r => {
-      const tr = document.createElement("tr");
-      const whFormatted = formatWorkingHours(r.workingHours);
+      const tr    = document.createElement("tr");
       const cells = [
         r.date, r.staffName, r.vehicle,
         r.departure, r.destination, r.arrival,
-        r.departureTime, r.arrivalTime, whFormatted,
+        r.departureTime, r.arrivalTime, formatWorkingHours(r.workingHours),
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
         r.distance, r.trainCommute, r.memo,
@@ -533,6 +536,7 @@
     document.getElementById("sumHours").textContent    = totalH + ":" + totalM;
     document.getElementById("sumTrain").textContent    = totalTrain > 0
       ? totalTrain.toLocaleString() + " 円" : "—";
+    document.getElementById("summaryBar").classList.add("visible");
   }
 
   function parseWorkingMinutes(wh) {
@@ -540,7 +544,7 @@
     const s = String(wh).trim();
     const jpMatch = s.match(/(\d+)時間(?:(\d+)分)?/);
     if (jpMatch) return parseInt(jpMatch[1]) * 60 + parseInt(jpMatch[2] || "0");
-    const hmMatch = s.match(/^(\d+):(\d{2})$/);
+    const hmMatch = s.match(/^(\d+):(\d{2})/);
     if (hmMatch) return parseInt(hmMatch[1]) * 60 + parseInt(hmMatch[2]);
     return 0;
   }
@@ -553,7 +557,6 @@
     return h + ":" + m;
   }
 
-  // ── 表示切替 ──
   function setView(state) {
     document.getElementById("spinner").classList.toggle("visible",  state === "loading");
     document.getElementById("msgInit").classList.toggle("visible",  state === "init");
