@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>運行記録照会</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+      background: #F5F7FA;
+      color: #2D2D2D;
+      min-height: 100vh;
+      padding-bottom: 40px;
+    }
+
+    header {
+      background: #1A6B3C;
+      color: white;
+      padding: 16px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 17px; font-weight: 700; letter-spacing: 0.05em; }
+    header p  { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+
+    /* ── パスワード画面 ── */
+    .auth-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 60px);
+      padding: 20px;
+    }
+    .auth-box {
+      background: white;
+      border-radius: 16px;
+      padding: 32px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .auth-box .auth-title {
+      font-size: 16px;
+      font-weight: 700;
+      text-align: center;
+      color: #1A6B3C;
+    }
+    .auth-box .auth-desc {
+      font-size: 13px;
+      color: #6B7280;
+      text-align: center;
+    }
+    .auth-box input {
+      width: 100%;
+      border: 1.5px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 15px;
+      font-family: inherit;
+      color: #2D2D2D;
+      transition: border-color 0.15s;
+    }
+    .auth-box input:focus {
+      outline: none;
+      border-color: #1A6B3C;
+    }
+    .auth-box .auth-btn {
+      width: 100%;
+      background: #1A6B3C;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .auth-box .auth-btn:active  { background: #145530; }
+    .auth-box .auth-btn:disabled { background: #9CA3AF; cursor: not-allowed; }
+    .auth-error {
+      font-size: 13px;
+      color: #DC2626;
+      text-align: center;
+      display: none;
+    }
+    .auth-error.visible { display: block; }
+
+    /* ── フィルターパネル ── */
+    .filter-panel {
+      background: white;
+      margin: 16px;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .filter-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .filter-field label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6B7280;
+      letter-spacing: 0.03em;
+    }
+    .filter-field select {
+      width: 100%;
+      border: 1.5px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      color: #2D2D2D;
+      background: white;
+      -webkit-appearance: none;
+      transition: border-color 0.15s;
+    }
+    .filter-field select:focus {
+      outline: none;
+      border-color: #1A6B3C;
+    }
+
+    .search-btn {
+      width: 100%;
+      background: #1A6B3C;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .search-btn:active  { background: #145530; transform: scale(0.98); }
+    .search-btn:disabled { background: #9CA3AF; cursor: not-allowed; }
+
+    /* ── サマリーバー ── */
+    .summary-bar {
+      margin: 0 16px 8px;
+      background: #E8F5EE;
+      border: 1px solid #B7E4C7;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .summary-bar.visible { display: flex; }
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .summary-item .val {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1A6B3C;
+    }
+    .summary-item .lbl {
+      font-size: 10px;
+      color: #6B7280;
+    }
+
+    /* ── テーブル ── */
+    .table-wrap {
+      margin: 0 16px;
+      overflow-x: auto;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      font-size: 12px;
+      min-width: 900px;
+    }
+
+    thead tr {
+      background: #1A6B3C;
+      color: white;
+    }
+    thead th {
+      padding: 10px 10px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #F0F0F0;
+      transition: background 0.1s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #F0FFF6; }
+
+    tbody td {
+      padding: 9px 10px;
+      white-space: nowrap;
+      color: #2D2D2D;
+      vertical-align: middle;
+    }
+
+    tfoot tr {
+      background: #F0FFF6;
+      border-top: 2px solid #B7E4C7;
+    }
+    tfoot td {
+      padding: 9px 10px;
+      font-weight: 700;
+      font-size: 12px;
+      color: #1A6B3C;
+      white-space: nowrap;
+    }
+
+    /* ── 状態表示 ── */
+    .state-msg {
+      text-align: center;
+      padding: 48px 20px;
+      color: #9CA3AF;
+      font-size: 14px;
+      display: none;
+    }
+    .state-msg.visible { display: block; }
+    .state-msg .icon { font-size: 32px; margin-bottom: 8px; }
+
+    /* ── スピナー ── */
+    .spinner {
+      display: none;
+      text-align: center;
+      padding: 40px;
+      color: #6B7280;
+      font-size: 13px;
+    }
+    .spinner.visible { display: block; }
+    .spinner::before {
+      content: "";
+      display: block;
+      width: 28px;
+      height: 28px;
+      border: 3px solid #E5E7EB;
+      border-top-color: #1A6B3C;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── メインコンテンツ（認証後に表示） ── */
+    #mainContent { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📋 運行記録照会</h1>
+  <p id="headerCompanyName">読み込み中...</p>
+</header>
+
+<!-- パスワード認証画面 -->
+<div class="auth-wrap" id="authScreen">
+  <div class="auth-box">
+    <div class="auth-title">🔐 パスワード認証</div>
+    <div class="auth-desc">担当者よりお知らせしたパスワードを入力してください</div>
+    <input type="password" id="passwordInput" placeholder="パスワード" />
+    <div class="auth-error" id="authError">パスワードが正しくありません</div>
+    <button class="auth-btn" id="authBtn">ログイン</button>
+  </div>
+</div>
+
+<!-- メインコンテンツ（認証後） -->
+<div id="mainContent">
+
+  <!-- フィルターパネル -->
+  <div class="filter-panel">
+    <div class="filter-row">
+      <div class="filter-field">
+        <label>年</label>
+        <select id="selYear"></select>
+      </div>
+      <div class="filter-field">
+        <label>月</label>
+        <select id="selMonth"></select>
+      </div>
+    </div>
+    <button class="search-btn" id="searchBtn">検索する</button>
+  </div>
+
+  <!-- サマリーバー -->
+  <div class="summary-bar" id="summaryBar">
+    <div class="summary-item">
+      <span class="val" id="sumCount">0</span>
+      <span class="lbl">件数</span>
+    </div>
+    <div class="summary-item">
+      <span class="val" id="sumDistance">0 km</span>
+      <span class="lbl">総走行距離</span>
+    </div>
+    <div class="summary-item">
+      <span class="val" id="sumHours">0:00</span>
+      <span class="lbl">総稼働時間</span>
+    </div>
+    <div class="summary-item">
+      <span class="val" id="sumTrain">0 円</span>
+      <span class="lbl">電車通勤合計</span>
+    </div>
+  </div>
+
+  <!-- スピナー -->
+  <div class="spinner" id="spinner">検索中...</div>
+
+  <!-- 初期メッセージ -->
+  <div class="state-msg visible" id="msgInit">
+    <div class="icon">🔍</div>
+    月を選択して検索してください
+  </div>
+
+  <!-- 0件メッセージ -->
+  <div class="state-msg" id="msgEmpty">
+    <div class="icon">📭</div>
+    該当する運行記録がありません
+  </div>
+
+  <!-- テーブル -->
+  <div class="table-wrap" id="tableWrap" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th>日付</th>
+          <th>運行者</th>
+          <th>車両</th>
+          <th>出発地</th>
+          <th>行き先</th>
+          <th>到着地</th>
+          <th>出発時間</th>
+          <th>到着時間</th>
+          <th>稼働時間</th>
+          <th>利用者</th>
+          <th>利用目的</th>
+          <th>メーター前</th>
+          <th>メーター後</th>
+          <th>走行距離</th>
+          <th>電車通勤</th>
+          <th>備考</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+      <tfoot id="tableFoot"></tfoot>
+    </table>
+  </div>
+
+</div><!-- /mainContent -->
+
+<script>
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
+
+  // ── URLパラメータから会社IDを取得 ──
+  const params    = new URLSearchParams(window.location.search);
+  const companyId = (params.get("company") || "").trim();
+
+  // 会社IDがなければエラー表示
+  if (!companyId) {
+    document.getElementById("authScreen").innerHTML =
+      '<div style="text-align:center;padding:60px 20px;color:#9CA3AF;">' +
+      '<div style="font-size:32px;margin-bottom:12px;">⚠️</div>' +
+      'URLが正しくありません。<br>担当者にお問い合わせください。</div>';
+  }
+
+  // ── パスワード認証 ──
+  document.getElementById("authBtn").addEventListener("click", authenticate);
+  document.getElementById("passwordInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") authenticate();
+  });
+
+  async function authenticate() {
+    const password = document.getElementById("passwordInput").value.trim();
+    if (!password) return;
+
+    const btn = document.getElementById("authBtn");
+    btn.disabled = true;
+    btn.textContent = "確認中...";
+    document.getElementById("authError").classList.remove("visible");
+
+    try {
+      const res  = await fetch(`${GAS_URL}?action=verifyCustomer&companyId=${encodeURIComponent(companyId)}&password=${encodeURIComponent(password)}`);
+      const data = await res.json();
+
+      if (data.verified) {
+        // 認証成功 → メイン画面へ
+        document.getElementById("authScreen").style.display = "none";
+        document.getElementById("mainContent").style.display = "block";
+        document.getElementById("headerCompanyName").textContent = data.companyName;
+      } else {
+        document.getElementById("authError").classList.add("visible");
+        document.getElementById("passwordInput").value = "";
+        document.getElementById("passwordInput").focus();
+      }
+    } catch(e) {
+      document.getElementById("authError").textContent = "通信エラーが発生しました。再度お試しください。";
+      document.getElementById("authError").classList.add("visible");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "ログイン";
+    }
+  }
+
+  // ── 年月プルダウンを初期化 ──
+  const now      = new Date();
+  const curYear  = now.getFullYear();
+  const curMonth = now.getMonth() + 1;
+
+  const selYear  = document.getElementById("selYear");
+  const selMonth = document.getElementById("selMonth");
+
+  for (let y = curYear; y >= curYear - 2; y--) {
+    const opt = document.createElement("option");
+    opt.value = y;
+    opt.textContent = y + "年";
+    if (y === curYear) opt.selected = true;
+    selYear.appendChild(opt);
+  }
+  for (let m = 1; m <= 12; m++) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = String(m).padStart(2, "0") + "月";
+    if (m === curMonth) opt.selected = true;
+    selMonth.appendChild(opt);
+  }
+
+  // ── 検索 ──
+  document.getElementById("searchBtn").addEventListener("click", search);
+
+  async function search() {
+    const year  = parseInt(selYear.value);
+    const month = parseInt(selMonth.value);
+
+    setView("loading");
+
+    try {
+      const url  = `${GAS_URL}?action=getRecords&companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+
+      if (!data.records || data.records.length === 0) {
+        setView("empty");
+        return;
+      }
+
+      renderTable(data.records);
+      setView("table");
+
+    } catch(e) {
+      alert("通信エラーが発生しました。再度お試しください。");
+      setView("init");
+    }
+  }
+
+  // ── テーブル描画（records.htmlと同一ロジック）──
+  function renderTable(records) {
+    const tbody = document.getElementById("tableBody");
+    const tfoot = document.getElementById("tableFoot");
+    tbody.innerHTML = "";
+
+    let totalDistance = 0;
+    let totalMinutes  = 0;
+    let totalTrain    = 0;
+
+    records.forEach(r => {
+      const tr = document.createElement("tr");
+      const whFormatted = formatWorkingHours(r.workingHours);
+      const cells = [
+        r.date, r.staffName, r.vehicle,
+        r.departure, r.destination, r.arrival,
+        r.departureTime, r.arrivalTime, whFormatted,
+        r.passenger, r.purpose,
+        r.meterBefore, r.meterAfter,
+        r.distance, r.trainCommute, r.memo,
+      ];
+      cells.forEach(val => {
+        const td = document.createElement("td");
+        td.textContent = val || "—";
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+
+      const dist = parseFloat(String(r.distance).replace(/[^0-9.]/g, ""));
+      if (!isNaN(dist)) totalDistance += dist;
+      totalMinutes += parseWorkingMinutes(r.workingHours);
+      const train = parseFloat(String(r.trainCommute).replace(/[^0-9.]/g, ""));
+      if (!isNaN(train) && train > 0) totalTrain += train;
+    });
+
+    const totalH = Math.floor(totalMinutes / 60);
+    const totalM = String(totalMinutes % 60).padStart(2, "0");
+    tfoot.innerHTML = `
+      <tr>
+        <td colspan="13">合計（${records.length} 件）</td>
+        <td>${totalDistance.toFixed(0)} km</td>
+        <td>${totalTrain > 0 ? totalTrain.toLocaleString() + " 円" : "—"}</td>
+        <td></td>
+      </tr>`;
+
+    document.getElementById("sumCount").textContent    = records.length;
+    document.getElementById("sumDistance").textContent = totalDistance.toFixed(0) + " km";
+    document.getElementById("sumHours").textContent    = totalH + ":" + totalM;
+    document.getElementById("sumTrain").textContent    = totalTrain > 0
+      ? totalTrain.toLocaleString() + " 円" : "—";
+  }
+
+  function parseWorkingMinutes(wh) {
+    if (!wh) return 0;
+    const s = String(wh).trim();
+    const jpMatch = s.match(/(\d+)時間(?:(\d+)分)?/);
+    if (jpMatch) return parseInt(jpMatch[1]) * 60 + parseInt(jpMatch[2] || "0");
+    const hmMatch = s.match(/^(\d+):(\d{2})$/);
+    if (hmMatch) return parseInt(hmMatch[1]) * 60 + parseInt(hmMatch[2]);
+    return 0;
+  }
+
+  function formatWorkingHours(wh) {
+    const mins = parseWorkingMinutes(wh);
+    if (mins === 0 && !wh) return "—";
+    const h = Math.floor(mins / 60);
+    const m = String(mins % 60).padStart(2, "0");
+    return h + ":" + m;
+  }
+
+  // ── 表示切替 ──
+  function setView(state) {
+    document.getElementById("spinner").classList.toggle("visible",  state === "loading");
+    document.getElementById("msgInit").classList.toggle("visible",  state === "init");
+    document.getElementById("msgEmpty").classList.toggle("visible", state === "empty");
+    document.getElementById("tableWrap").style.display = state === "table" ? "block" : "none";
+    document.getElementById("summaryBar").classList.toggle("visible", state === "table");
+    document.getElementById("searchBtn").disabled = state === "loading";
+  }
+</script>
+</body>
+</html>
