@@ -415,23 +415,14 @@
 <div class="toast" id="toast">✅ 送信しました</div>
 
 <script>
-  // =====================
-  // 設定（変更してください）
-  // =====================
-  const LIFF_ID = "2010522430-YGmulMkA";
+  const LIFF_ID = "2010510070-mvaJV1XE";
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
 
-  // =====================
-  // グローバル変数
-  // =====================
   let lineUserId = "";
   let staffId = "";
   let staffName = "";
   let companyIds = [];
 
-  // =====================
-  // LIFF初期化
-  // =====================
   liff.init({ liffId: LIFF_ID })
     .then(async () => {
       if (!liff.isLoggedIn()) {
@@ -442,14 +433,12 @@
       const profile = await liff.getProfile();
       lineUserId = profile.userId;
 
-      // アイコン表示
       if (profile.pictureUrl) {
         const img = document.getElementById("userIcon");
         img.src = profile.pictureUrl;
         img.style.display = "block";
       }
 
-      // GASからスタッフ情報を取得
       try {
         const res = await fetch(`${GAS_URL}?action=getStaff&lineUserId=${lineUserId}`);
         const data = await res.json();
@@ -459,7 +448,6 @@
           document.getElementById("userName").textContent = staffName;
           document.getElementById("staffInfo").textContent = `スタッフID：${staffId}`;
 
-          // 会社プルダウンを構築
           companyIds = data.companyIds || [];
           const companySelect = document.getElementById("company");
           companySelect.innerHTML = "<option value=''>選択してください</option>";
@@ -487,9 +475,6 @@
       console.error("LIFF init error", err);
     });
 
-  // =====================
-  // 新規スタッフ登録
-  // =====================
   document.getElementById("registerBtn").addEventListener("click", async () => {
     const regStaffName = document.getElementById("regStaffName").value.trim();
 
@@ -533,9 +518,6 @@
     }
   });
 
-  // =====================
-  // 今日の日付をデフォルト設定
-  // =====================
   const today = new Date();
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, "0");
@@ -543,7 +525,7 @@
   document.getElementById("date").value = `${yyyy}-${mm}-${dd}`;
 
   // =====================
-  // 稼働時間の自動計算
+  // 稼働時間の自動計算（H:MM形式で保存）
   // =====================
   function calcWorkingHours() {
     const dep = document.getElementById("departureTime").value;
@@ -554,16 +536,13 @@
     let total = (ah * 60 + am) - (dh * 60 + dm);
     if (total < 0) total += 24 * 60;
     const h = Math.floor(total / 60);
-    const m = total % 60;
-    document.getElementById("workingHours").textContent = `${h}時間${m}分`;
+    const m = String(total % 60).padStart(2, "0");
+    document.getElementById("workingHours").textContent = `${h}:${m}`;
   }
 
   document.getElementById("departureTime").addEventListener("change", calcWorkingHours);
   document.getElementById("arrivalTime").addEventListener("change", calcWorkingHours);
 
-  // =====================
-  // 走行距離の自動計算
-  // =====================
   function calcDistance() {
     const before = Number(document.getElementById("meterBefore").value);
     const after = Number(document.getElementById("meterAfter").value);
@@ -575,9 +554,6 @@
   document.getElementById("meterBefore").addEventListener("input", calcDistance);
   document.getElementById("meterAfter").addEventListener("input", calcDistance);
 
-  // =====================
-  // フォーム送信
-  // =====================
   document.getElementById("reportForm").addEventListener("submit", async (e) => {
     e.preventDefault();
 
