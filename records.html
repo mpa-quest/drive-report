@@ -411,10 +411,14 @@
 
     records.forEach(r => {
       const tr = document.createElement("tr");
+
+      // 稼働時間を HH:MM 形式に変換（"3時間0分" / "3:00" / "03:00" すべて対応）
+      const whFormatted = formatWorkingHours(r.workingHours);
+
       const cells = [
         r.date, r.staffName, r.vehicle,
         r.departure, r.destination, r.arrival,
-        r.departureTime, r.arrivalTime, r.workingHours,
+        r.departureTime, r.arrivalTime, whFormatted,
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
         r.distance, r.trainCommute, r.memo,
@@ -430,9 +434,7 @@
       const dist = parseFloat(String(r.distance).replace(/[^0-9.]/g, ""));
       if (!isNaN(dist)) totalDistance += dist;
 
-      const wh = String(r.workingHours || "");
-      const hm = wh.match(/(\d+)[時:時間](\d+)/);
-      if (hm) totalMinutes += parseInt(hm[1]) * 60 + parseInt(hm[2]);
+      totalMinutes += parseWorkingMinutes(r.workingHours);
 
       const train = parseFloat(String(r.trainCommute).replace(/[^0-9.]/g, ""));
       if (!isNaN(train) && train > 0) totalTrain += train;
@@ -455,6 +457,33 @@
     document.getElementById("sumHours").textContent    = totalH + ":" + totalM;
     document.getElementById("sumTrain").textContent    = totalTrain > 0
       ? totalTrain.toLocaleString() + " 円" : "—";
+  }
+
+  // 稼働時間文字列 → 総分数に変換
+  // 対応: "3時間0分" / "3時間" / "3:00" / "03:00"
+  function parseWorkingMinutes(wh) {
+    if (!wh) return 0;
+    const s = String(wh).trim();
+    // "X時間Y分" 形式
+    const jpMatch = s.match(/(\d+)時間(?:(\d+)分)?/);
+    if (jpMatch) {
+      return parseInt(jpMatch[1]) * 60 + parseInt(jpMatch[2] || "0");
+    }
+    // "H:MM" / "HH:MM" 形式
+    const hmMatch = s.match(/^(\d+):(\d{2})$/);
+    if (hmMatch) {
+      return parseInt(hmMatch[1]) * 60 + parseInt(hmMatch[2]);
+    }
+    return 0;
+  }
+
+  // 稼働時間文字列 → "HH:MM" 形式に統一
+  function formatWorkingHours(wh) {
+    const mins = parseWorkingMinutes(wh);
+    if (mins === 0 && !wh) return "—";
+    const h = Math.floor(mins / 60);
+    const m = String(mins % 60).padStart(2, "0");
+    return h + ":" + m;
   }
 
   function renderSummary(records) {
