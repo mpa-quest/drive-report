@@ -212,14 +212,49 @@
       margin: 0 auto 12px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── タブ ── */
+    .tab-wrap {
+      display: flex;
+      margin: 16px 16px 0;
+      background: white;
+      border-radius: 10px;
+      padding: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+      gap: 4px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 9px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      background: transparent;
+      color: #6B7280;
+      letter-spacing: 0.03em;
+    }
+    .tab-btn.active {
+      background: #1A6B3C;
+      color: white;
+    }
   </style>
 </head>
 <body>
 
 <header>
   <h1>📋 運行記録照会</h1>
-  <p>会社・月を選択して運行記録を確認</p>
+  <p>会社またはスタッフ・月を選択して運行記録を確認</p>
 </header>
+
+<!-- タブ -->
+<div class="tab-wrap">
+  <button class="tab-btn active" id="tabCompany" onclick="switchTab('company')">🏢 会社で検索</button>
+  <button class="tab-btn"        id="tabStaff"   onclick="switchTab('staff')">👤 スタッフで検索</button>
+</div>
 
 <!-- フィルターパネル -->
 <div class="filter-panel">
@@ -233,9 +268,17 @@
       <select id="selMonth"></select>
     </div>
   </div>
-  <div class="filter-field">
+  <!-- 会社プルダウン -->
+  <div class="filter-field" id="companyField">
     <label>会社</label>
     <select id="selCompany" disabled>
+      <option value="">読み込み中...</option>
+    </select>
+  </div>
+  <!-- スタッフプルダウン（初期非表示） -->
+  <div class="filter-field" id="staffField" style="display:none">
+    <label>スタッフ</label>
+    <select id="selStaff" disabled>
       <option value="">読み込み中...</option>
     </select>
   </div>
@@ -364,38 +407,83 @@
     }
   }
 
+  // ※ searchBtnはloadCompaniesとloadStaffの両方が完了後に有効化
+  // loadCompanies完了時点でsearchBtnを有効化（タブ切り替えで使い分ける）
+
+  // ── タブ切り替え ──
+  let currentTab = "company";
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById("tabCompany").classList.toggle("active", tab === "company");
+    document.getElementById("tabStaff").classList.toggle("active",   tab === "staff");
+    document.getElementById("companyField").style.display = tab === "company" ? "flex" : "none";
+    document.getElementById("staffField").style.display   = tab === "staff"   ? "flex" : "none";
+    setView("init");
+    document.getElementById("summaryBar").classList.remove("visible");
+  }
+
+  // ── スタッフ一覧を取得 ──
+  async function loadStaff() {
+    try {
+      const res  = await fetch(`${GAS_URL}?action=getStaffList`);
+      const data = await res.json();
+      const sel  = document.getElementById("selStaff");
+      sel.innerHTML = '<option value="">選択してください</option>';
+      (data.staff || []).forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.staffId;
+        opt.textContent = s.staffId + "　" + s.staffName;
+        sel.appendChild(opt);
+      });
+      sel.disabled = false;
+    } catch(e) {
+      document.getElementById("selStaff").innerHTML =
+        '<option value="">取得エラー - 再読み込みしてください</option>';
+    }
+  }
+  loadStaff();
+
   // ── 検索 ──
   document.getElementById("searchBtn").addEventListener("click", search);
 
   async function search() {
-    const companyId = document.getElementById("selCompany").value;
-    const year      = parseInt(document.getElementById("selYear").value);
-    const month     = parseInt(document.getElementById("selMonth").value);
+    const year  = parseInt(document.getElementById("selYear").value);
+    const month = parseInt(document.getElementById("selMonth").value);
 
-    if (!companyId) {
-      alert("会社を選択してください。");
-      return;
-    }
-
-    setView("loading");
-
-    try {
-      const url  = `${GAS_URL}?action=getRecords&companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}`;
-      const res  = await fetch(url);
-      const data = await res.json();
-
-      if (!data.records || data.records.length === 0) {
-        setView("empty");
-        return;
+    if (currentTab === "company") {
+      const companyId = document.getElementById("selCompany").value;
+      if (!companyId) { alert("会社を選択してください。"); return; }
+      setView("loading");
+      try {
+        const url  = `${GAS_URL}?action=getRecords&companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}`;
+        const res  = await fetch(url);
+        const data = await res.json();
+        if (!data.records || data.records.length === 0) { setView("empty"); return; }
+        renderTable(data.records);
+        renderSummary(data.records);
+        setView("table");
+      } catch(e) {
+        alert("通信エラーが発生しました。再度お試しください。");
+        setView("init");
       }
 
-      renderTable(data.records);
-      renderSummary(data.records);
-      setView("table");
-
-    } catch(e) {
-      alert("通信エラーが発生しました。再度お試しください。");
-      setView("init");
+    } else {
+      const staffId = document.getElementById("selStaff").value;
+      if (!staffId) { alert("スタッフを選択してください。"); return; }
+      setView("loading");
+      try {
+        const url  = `${GAS_URL}?action=getRecordsByStaff&staffId=${encodeURIComponent(staffId)}&year=${year}&month=${month}`;
+        const res  = await fetch(url);
+        const data = await res.json();
+        if (!data.records || data.records.length === 0) { setView("empty"); return; }
+        renderTable(data.records);
+        renderSummary(data.records);
+        setView("table");
+      } catch(e) {
+        alert("通信エラーが発生しました。再度お試しください。");
+        setView("init");
+      }
     }
   }
 
