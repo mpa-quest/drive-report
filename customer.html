@@ -638,7 +638,7 @@
     const totalM = String(totalMinutes % 60).padStart(2, "0");
     tfoot.innerHTML = `
       <tr>
-        <td colspan="13">合計（${records.length} 件）</td>
+        <td colspan="14">合計（${records.length} 件）</td>
         <td>${totalDistance.toFixed(0)} km</td>
         <td>${totalTrain > 0 ? totalTrain.toLocaleString() + " 円" : "—"}</td>
         <td></td>
