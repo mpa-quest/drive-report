@@ -421,8 +421,8 @@
           <th>行き先</th>
           <th>到着</th>
           <th>出発時間</th>
-          <th>到着時間</th>
           <th>到着日</th>
+          <th>到着時間</th>
           <th>稼働時間</th>
           <th>利用者</th>
           <th>利用目的</th>
@@ -615,7 +615,7 @@
       const cells = [
         r.date, r.staffName, r.vehicle,
         r.departure, r.destination, r.arrival,
-        r.departureTime, r.arrivalTime, r.arrivalDate || "―", formatWorkingHours(r.workingHours),
+        r.departureTime, r.arrivalDate || "―", r.arrivalTime, formatWorkingHours(r.workingHours),
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
         r.distance, r.trainCommute, r.memo,
