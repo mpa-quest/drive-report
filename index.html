@@ -653,6 +653,12 @@
       arrival: getFieldValue("arrival", "arrivalOther"),
       departureTime: document.getElementById("departureTime").value,
       arrivalTime: document.getElementById("arrivalTime").value,
+      arrivalDate: (() => {
+        const d = new Date(document.getElementById("date").value);
+        const offset = parseInt(document.getElementById("arrivalDayOffset").value) || 0;
+        d.setDate(d.getDate() + offset);
+        return d.toISOString().split("T")[0];
+      })(),
       workingHours: document.getElementById("workingHours").textContent,
       passenger: document.getElementById("passenger").value,
       purpose: getPurposeValue(),
