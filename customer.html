@@ -261,6 +261,15 @@
       @page {
         size: A4 landscape;
         margin: 12mm 10mm;
+        /* ブラウザのヘッダー・フッターを非表示 */
+        margin-header: 0;
+        margin-footer: 0;
+      }
+      /* Chrome/Edge: ヘッダー・フッターを空に */
+      @page { marks: none; }
+      html {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
 
       /* 印刷時に非表示にする要素 */
@@ -413,6 +422,7 @@
           <th>到着地</th>
           <th>出発時間</th>
           <th>到着時間</th>
+          <th>到着日</th>
           <th>稼働時間</th>
           <th>利用者</th>
           <th>利用目的</th>
@@ -605,7 +615,7 @@
       const cells = [
         r.date, r.staffName, r.vehicle,
         r.departure, r.destination, r.arrival,
-        r.departureTime, r.arrivalTime, formatWorkingHours(r.workingHours),
+        r.departureTime, r.arrivalTime, r.arrivalDate || "―", formatWorkingHours(r.workingHours),
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
         r.distance, r.trainCommute, r.memo,
