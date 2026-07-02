@@ -985,8 +985,12 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // 「この内容で送信する」ボタン
+  // 「この内容で送信する」ボタン（二重送信防止）
+  let isSubmitting = false;
   document.getElementById("btnSubmitConfirm").addEventListener("click", async () => {
+    if (isSubmitting) return; // 送信中なら即リターン
+    isSubmitting = true;
+
     const btn = document.getElementById("btnSubmitConfirm");
     btn.disabled = true;
     btn.textContent = "送信中...";
@@ -1007,6 +1011,7 @@
       alert("送信に失敗しました。もう一度お試しください。");
       btn.disabled = false;
       btn.textContent = "この内容で送信する";
+      isSubmitting = false; // エラー時のみフラグをリセット
     }
   });
 
