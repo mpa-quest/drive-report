@@ -877,8 +877,7 @@
       const [dh, dm] = dep.split(":").map(Number);
       const [ah, am] = arr.split(":").map(Number);
       const totalMinutes = (ah * 60 + am) - (dh * 60 + dm) + offset * 24 * 60;
-      const adjusted = totalMinutes < 0 ? totalMinutes + 24 * 60 : totalMinutes;
-      if (adjusted <= 0 && offset === 0) {
+      if (totalMinutes <= 0) {
         timeErrEl.classList.add("visible");
         document.getElementById("arrivalTime").classList.add("input-error");
         valid = false;
