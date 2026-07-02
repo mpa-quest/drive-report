@@ -251,7 +251,94 @@
     .toast.show {
       transform: translateX(-50%) translateY(0);
     }
-  </style>
+  
+  /* ── 完了画面 ── */
+  .complete-screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 60px);
+    padding: 40px 24px;
+    text-align: center;
+    gap: 16px;
+  }
+  .complete-screen.visible {
+    display: flex;
+  }
+  .complete-icon {
+    width: 72px;
+    height: 72px;
+    background: #E8F5EE;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+  }
+  .complete-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1A6B3C;
+    margin-top: 8px;
+  }
+  .complete-sub {
+    font-size: 13px;
+    color: #6B7280;
+    line-height: 1.6;
+  }
+  .complete-info {
+    background: #F0FFF6;
+    border: 1px solid #B7E4C7;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #2D2D2D;
+    line-height: 1.8;
+    width: 100%;
+    max-width: 320px;
+    text-align: left;
+  }
+  .complete-info .label {
+    color: #6B7280;
+    font-size: 11px;
+  }
+  .complete-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 320px;
+    margin-top: 8px;
+  }
+  .btn-continue {
+    background: #1A6B3C;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: background 0.15s;
+  }
+  .btn-continue:active { background: #145530; }
+  .btn-close {
+    background: white;
+    color: #6B7280;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-close:active { background: #F5F7FA; }
+</style>
 </head>
 <body>
 
@@ -445,6 +532,18 @@
 </form>
 
 <div class="toast" id="toast">✅ 送信しました</div>
+
+<!-- 完了画面 -->
+<div class="complete-screen" id="completeScreen">
+  <div class="complete-icon">✅</div>
+  <div class="complete-title">送信完了！</div>
+  <div class="complete-sub">運行報告を受け付けました。<br>お疲れ様でした！</div>
+  <div class="complete-info" id="completeSummary"></div>
+  <div class="complete-btns">
+    <button class="btn-continue" id="btnContinue">続けて報告する</button>
+    <button class="btn-close"    id="btnClose">閉じる</button>
+  </div>
+</div>
 
 <script>
   const LIFF_ID = "2010522430-YGmulMkA";
@@ -676,17 +775,8 @@
         body: JSON.stringify(payload),
       });
 
-      const toast = document.getElementById("toast");
-      toast.classList.add("show");
-      setTimeout(() => {
-        if (liff.isInClient()) {
-          liff.closeWindow();
-        } else {
-          toast.classList.remove("show");
-          btn.disabled = false;
-          btn.textContent = "送信する";
-        }
-      }, 1500);
+      // 完了画面に切り替え
+      showCompleteScreen(payload);
 
     } catch(err) {
       alert("送信に失敗しました。もう一度お試しください。");
@@ -694,6 +784,66 @@
       btn.textContent = "送信する";
     }
   });
+
+  // ── 完了画面表示 ──
+  function showCompleteScreen(payload) {
+    // フォームを非表示にして完了画面を表示
+    document.querySelector("form").style.display = "none";
+    document.querySelector(".user-badge").style.display = "none";
+    document.getElementById("completeScreen").classList.add("visible");
+
+    // 送信内容のサマリーを表示
+    const summary = document.getElementById("completeSummary");
+    const dateStr     = payload.date        || "—";
+    const company     = payload.companyName || payload.companyId || "—";
+    const departure   = payload.departure   || "—";
+    const arrival     = payload.arrival     || "—";
+    const depTime     = payload.departureTime || "—";
+    const arrTime     = payload.arrivalTime   || "—";
+    const working     = payload.workingHours  || "—";
+    summary.innerHTML = `
+      <div><span class="label">日付</span><br>${dateStr}</div>
+      <div style="margin-top:6px"><span class="label">会社</span><br>${company}</div>
+      <div style="margin-top:6px"><span class="label">区間</span><br>${departure} → ${arrival}</div>
+      <div style="margin-top:6px"><span class="label">出発 / 到着</span><br>${depTime} 〜 ${arrTime}</div>
+      <div style="margin-top:6px"><span class="label">稼働時間</span><br>${working}</div>
+    `;
+
+    // 「続けて報告する」ボタン：フォームをリセットして戻る
+    document.getElementById("btnContinue").onclick = function() {
+      document.getElementById("completeScreen").classList.remove("visible");
+      const form = document.querySelector("form");
+      form.style.display = "";
+      document.querySelector(".user-badge").style.display = "";
+
+      // 日付・会社・フォーム入力を初期化
+      const submitBtn = document.getElementById("submitBtn");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "送信する";
+
+      // 一部の項目はそのまま残す（日付・会社はリセット、入力値はクリア）
+      form.reset();
+
+      // 稼働時間を再計算
+      calcWorkingHours();
+
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    // 「閉じる」ボタン
+    document.getElementById("btnClose").onclick = function() {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      } else {
+        // ブラウザで開いている場合はフォームに戻る
+        document.getElementById("completeScreen").classList.remove("visible");
+        document.querySelector("form").style.display = "";
+        document.querySelector(".user-badge").style.display = "";
+        document.getElementById("submitBtn").disabled = false;
+        document.getElementById("submitBtn").textContent = "送信する";
+      }
+    };
+  }
 </script>
 </body>
 </html>
