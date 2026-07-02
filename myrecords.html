@@ -322,7 +322,7 @@
 </div>
 
 <script>
-  const LIFF_ID = "2010522430-YGmulMkA";
+  const LIFF_ID = "2010522430-sxu7AQOa";
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
 
   let lineUserId = "";
@@ -441,16 +441,6 @@
 
   // ── テーブル描画 ──
   function renderTable(records) {
-    // 日付・出発時間の昇順でソート
-    records = records.slice().sort((a, b) => {
-      const dateA = a.date ? new Date(a.date).getTime() : 0;
-      const dateB = b.date ? new Date(b.date).getTime() : 0;
-      if (dateA !== dateB) return dateA - dateB;
-      const tA = String(a.departureTime || "").trim();
-      const tB = String(b.departureTime || "").trim();
-      return tA < tB ? -1 : tA > tB ? 1 : 0;
-    });
-
     const tbody = document.getElementById("tableBody");
     const tfoot = document.getElementById("tableFoot");
     tbody.innerHTML = "";
