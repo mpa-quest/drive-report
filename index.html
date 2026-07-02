@@ -624,6 +624,7 @@
             const opt = document.createElement("option");
             opt.value = c.id;
             opt.textContent = `${c.id}_${c.name}`;
+            opt.dataset.name = c.name;
             companySelect.appendChild(opt);
           });
           if (companyIds.length === 0) {
@@ -795,7 +796,9 @@
     // 送信内容のサマリーを表示
     const summary = document.getElementById("completeSummary");
     const dateStr     = payload.date        || "—";
-    const company     = payload.companyName || (payload.company ? payload.company.split("_").slice(1).join("_") || payload.company : "—");
+    const companySelect = document.getElementById("company");
+    const selectedOpt   = companySelect.options[companySelect.selectedIndex];
+    const company       = (selectedOpt && selectedOpt.dataset.name) ? selectedOpt.dataset.name : (payload.company || "—");
     const departure   = payload.departure   || "—";
     const arrival     = payload.arrival     || "—";
     const depTime     = payload.departureTime || "—";
