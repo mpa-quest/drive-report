@@ -795,7 +795,7 @@
     // 送信内容のサマリーを表示
     const summary = document.getElementById("completeSummary");
     const dateStr     = payload.date        || "—";
-    const company     = payload.companyName || payload.companyId || "—";
+    const company     = payload.companyName || (payload.company ? payload.company.split("_").slice(1).join("_") || payload.company : "—");
     const departure   = payload.departure   || "—";
     const arrival     = payload.arrival     || "—";
     const depTime     = payload.departureTime || "—";
