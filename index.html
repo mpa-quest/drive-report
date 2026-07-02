@@ -252,6 +252,100 @@
       transform: translateX(-50%) translateY(0);
     }
   
+  /* ── 確認画面 ── */
+  .confirm-screen {
+    display: none;
+    flex-direction: column;
+    padding: 20px 16px 40px;
+    gap: 12px;
+  }
+  .confirm-screen.visible { display: flex; }
+  .confirm-screen h2 {
+    font-size: 17px;
+    font-weight: 700;
+    color: #1A6B3C;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .confirm-screen .sub {
+    font-size: 12px;
+    color: #6B7280;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .confirm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  }
+  .confirm-table tr { border-bottom: 1px solid #F0F0F0; }
+  .confirm-table tr:last-child { border-bottom: none; }
+  .confirm-table th {
+    width: 38%;
+    padding: 10px 12px;
+    background: #F5F7FA;
+    color: #6B7280;
+    font-weight: 500;
+    text-align: left;
+    font-size: 12px;
+    vertical-align: top;
+  }
+  .confirm-table td {
+    padding: 10px 12px;
+    color: #2D2D2D;
+    vertical-align: top;
+    word-break: break-all;
+  }
+  .confirm-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .btn-submit-confirm {
+    background: #1A6B3C;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: background 0.15s;
+  }
+  .btn-submit-confirm:active { background: #145530; }
+  .btn-back {
+    background: white;
+    color: #6B7280;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-back:active { background: #F5F7FA; }
+
+  /* ── バリデーション警告 ── */
+  .field-error {
+    font-size: 11px;
+    color: #DC2626;
+    margin-top: 4px;
+    display: none;
+  }
+  .field-error.visible { display: block; }
+  .input-error {
+    border-color: #DC2626 !important;
+  }
+
   /* ── 完了画面 ── */
   .complete-screen {
     display: none;
@@ -456,6 +550,7 @@
       <div class="sub-field">
         <label>到着時間<span class="required">*</span></label>
         <input type="time" id="arrivalTime" required>
+        <span class="field-error" id="timeError">⚠️ 到着時間が出発時間より前になっています</span>
       </div>
     </div>
     <div class="auto-field">
@@ -498,6 +593,7 @@
         <option>その他</option>
       </select>
       <input type="text" id="purposeOther" placeholder="利用目的を入力" style="display:none; margin-top:6px;">
+      <span class="field-error" id="purposeError">⚠️ 利用目的を選択してください</span>
       <span id="purposeHint" style="font-size:10px; color:#9CA3AF; margin-top:2px;"></span>
       <script>
         (function() {
@@ -532,6 +628,17 @@
 </form>
 
 <div class="toast" id="toast">✅ 送信しました</div>
+
+<!-- 確認画面 -->
+<div class="confirm-screen" id="confirmScreen">
+  <h2>📋 入力内容の確認</h2>
+  <p class="sub">以下の内容で送信します。よろしいですか？</p>
+  <table class="confirm-table" id="confirmTable"></table>
+  <div class="confirm-btns">
+    <button class="btn-submit-confirm" id="btnSubmitConfirm">この内容で送信する</button>
+    <button class="btn-back" id="btnBackToForm">← 修正する</button>
+  </div>
+</div>
 
 <!-- 完了画面 -->
 <div class="complete-screen" id="completeScreen">
@@ -694,6 +801,35 @@
   const dd = String(today.getDate()).padStart(2, "0");
   document.getElementById("date").value = `${yyyy}-${mm}-${dd}`;
 
+  // ── localStorage からドラフト復元 ──
+  const draft = localStorage.getItem("reportDraft");
+  if (draft) {
+    try {
+      const d = JSON.parse(draft);
+      // 同日のドラフトのみ復元（日付が変わっていたら破棄）
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+      if (d.date === todayStr) {
+        if (d.vehicle)        document.getElementById("vehicle").value        = d.vehicle;
+        if (d.destination)    document.getElementById("destination").value    = d.destination;
+        if (d.departure)      document.getElementById("departure").value      = d.departure;
+        if (d.arrival)        document.getElementById("arrival").value        = d.arrival;
+        if (d.departureTime)  document.getElementById("departureTime").value  = d.departureTime;
+        if (d.arrivalTime)    document.getElementById("arrivalTime").value    = d.arrivalTime;
+        if (d.passenger)      document.getElementById("passenger").value      = d.passenger;
+        if (d.meterBefore)    document.getElementById("meterBefore").value    = d.meterBefore;
+        if (d.meterAfter)     document.getElementById("meterAfter").value     = d.meterAfter;
+        if (d.trainCommute)   document.getElementById("trainCommute").value   = d.trainCommute;
+        if (d.memo)           document.getElementById("memo").value           = d.memo;
+        calcWorkingHours();
+        calcDistance();
+      } else {
+        localStorage.removeItem("reportDraft");
+      }
+    } catch(e) {
+      localStorage.removeItem("reportDraft");
+    }
+  }
+
   // =====================
   // 稼働時間の自動計算（H:MM形式で保存）
   // =====================
@@ -727,63 +863,160 @@
   document.getElementById("meterBefore").addEventListener("input", calcDistance);
   document.getElementById("meterAfter").addEventListener("input", calcDistance);
 
-  document.getElementById("reportForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
+  // ── バリデーション ──
+  function validateForm() {
+    let valid = true;
 
-    // 利用目的の未選択チェック（multiple selectはrequiredが効かないため）
-    const purposeSel = document.getElementById("purpose");
-    if (purposeSel.selectedOptions.length === 0) {
-      alert("利用目的を選択してください。");
-      return;
+    // 到着時間チェック（出発時間より前でないか）
+    const dep    = document.getElementById("departureTime").value;
+    const arr    = document.getElementById("arrivalTime").value;
+    const offset = parseInt(document.getElementById("arrivalDayOffset").value) || 0;
+    const timeErrEl = document.getElementById("timeError");
+
+    if (dep && arr) {
+      const [dh, dm] = dep.split(":").map(Number);
+      const [ah, am] = arr.split(":").map(Number);
+      const totalMinutes = (ah * 60 + am) - (dh * 60 + dm) + offset * 24 * 60;
+      const adjusted = totalMinutes < 0 ? totalMinutes + 24 * 60 : totalMinutes;
+      if (adjusted <= 0 && offset === 0) {
+        timeErrEl.classList.add("visible");
+        document.getElementById("arrivalTime").classList.add("input-error");
+        valid = false;
+      } else {
+        timeErrEl.classList.remove("visible");
+        document.getElementById("arrivalTime").classList.remove("input-error");
+      }
     }
 
-    const btn = document.getElementById("submitBtn");
-    btn.disabled = true;
-    btn.textContent = "送信中...";
+    // 利用目的の未選択チェック
+    const purposeSel = document.getElementById("purpose");
+    const purposeErrEl = document.getElementById("purposeError");
+    if (purposeSel.selectedOptions.length === 0) {
+      purposeErrEl.classList.add("visible");
+      valid = false;
+    } else {
+      purposeErrEl.classList.remove("visible");
+    }
 
-    const payload = {
+    return valid;
+  }
+
+  // バリデーションはリアルタイムでもチェック
+  document.getElementById("arrivalTime").addEventListener("change", validateForm);
+  document.getElementById("arrivalDayOffset").addEventListener("change", validateForm);
+  document.getElementById("purpose").addEventListener("change", validateForm);
+
+  // ── フォーム送信 → 確認画面へ ──
+  let currentPayload = null;
+
+  document.getElementById("reportForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    // payloadを組み立てて確認画面へ
+    const companySelect = document.getElementById("company");
+    const selectedOpt   = companySelect.options[companySelect.selectedIndex];
+    const companyName   = (selectedOpt && selectedOpt.dataset.name) ? selectedOpt.dataset.name : companySelect.value;
+
+    currentPayload = {
       action: "submitReport",
       lineUserId,
       staffId,
       staffName,
-      date: document.getElementById("date").value,
-      vehicle: getFieldValue("vehicle", "vehicleOther"),
-      departure: getFieldValue("departure", "departureOther"),
-      destination: document.getElementById("destination").value,
-      arrival: getFieldValue("arrival", "arrivalOther"),
+      date:          document.getElementById("date").value,
+      vehicle:       getFieldValue("vehicle", "vehicleOther"),
+      departure:     getFieldValue("departure", "departureOther"),
+      destination:   document.getElementById("destination").value,
+      arrival:       getFieldValue("arrival", "arrivalOther"),
       departureTime: document.getElementById("departureTime").value,
-      arrivalTime: document.getElementById("arrivalTime").value,
+      arrivalTime:   document.getElementById("arrivalTime").value,
       arrivalDate: (() => {
         const d = new Date(document.getElementById("date").value);
         const offset = parseInt(document.getElementById("arrivalDayOffset").value) || 0;
         d.setDate(d.getDate() + offset);
         return d.toISOString().split("T")[0];
       })(),
-      workingHours: document.getElementById("workingHours").textContent,
-      passenger: document.getElementById("passenger").value,
-      purpose: getPurposeValue(),
-      meterBefore: document.getElementById("meterBefore").value,
-      meterAfter: document.getElementById("meterAfter").value,
-      distance: document.getElementById("distance").textContent,
-      company: document.getElementById("company").value,
-      trainCommute: document.getElementById("trainCommute").value,
-      memo: document.getElementById("memo").value,
+      workingHours:  document.getElementById("workingHours").textContent,
+      passenger:     document.getElementById("passenger").value,
+      purpose:       getPurposeValue(),
+      meterBefore:   document.getElementById("meterBefore").value,
+      meterAfter:    document.getElementById("meterAfter").value,
+      distance:      document.getElementById("distance").textContent,
+      company:       companySelect.value,
+      companyName,
+      trainCommute:  document.getElementById("trainCommute").value,
+      memo:          document.getElementById("memo").value,
     };
+
+    // localStorage に一時保存
+    localStorage.setItem("reportDraft", JSON.stringify(currentPayload));
+
+    showConfirmScreen(currentPayload);
+  });
+
+  // ── 確認画面表示 ──
+  function showConfirmScreen(payload) {
+    document.querySelector("form").style.display    = "none";
+    document.querySelector(".user-badge").style.display = "none";
+    document.getElementById("confirmScreen").classList.add("visible");
+
+    const rows = [
+      ["日付",       payload.date],
+      ["会社",       payload.companyName || payload.company],
+      ["車両",       payload.vehicle],
+      ["出発",       payload.departure],
+      ["行き先",     payload.destination],
+      ["到着",       payload.arrival],
+      ["出発時間",   payload.departureTime],
+      ["到着日",     payload.arrivalDate],
+      ["到着時間",   payload.arrivalTime],
+      ["稼働時間",   payload.workingHours],
+      ["利用者",     payload.passenger],
+      ["利用目的",   payload.purpose],
+      ["走行距離",   payload.distance],
+      ["電車通勤",   payload.trainCommute ? payload.trainCommute + " 円" : "—"],
+      ["備考",       payload.memo || "—"],
+    ];
+
+    const table = document.getElementById("confirmTable");
+    table.innerHTML = rows.map(([label, val]) =>
+      `<tr><th>${label}</th><td>${val || "—"}</td></tr>`
+    ).join("");
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // 「この内容で送信する」ボタン
+  document.getElementById("btnSubmitConfirm").addEventListener("click", async () => {
+    const btn = document.getElementById("btnSubmitConfirm");
+    btn.disabled = true;
+    btn.textContent = "送信中...";
 
     try {
       await fetch(GAS_URL, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(currentPayload),
       });
 
-      // 完了画面に切り替え
-      showCompleteScreen(payload);
+      // 一時保存を削除
+      localStorage.removeItem("reportDraft");
+
+      document.getElementById("confirmScreen").classList.remove("visible");
+      showCompleteScreen(currentPayload);
 
     } catch(err) {
       alert("送信に失敗しました。もう一度お試しください。");
       btn.disabled = false;
-      btn.textContent = "送信する";
+      btn.textContent = "この内容で送信する";
     }
+  });
+
+  // 「修正する」ボタン
+  document.getElementById("btnBackToForm").addEventListener("click", () => {
+    document.getElementById("confirmScreen").classList.remove("visible");
+    document.querySelector("form").style.display    = "";
+    document.querySelector(".user-badge").style.display = "";
+    window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
   // ── 完了画面表示 ──
@@ -796,9 +1029,7 @@
     // 送信内容のサマリーを表示
     const summary = document.getElementById("completeSummary");
     const dateStr     = payload.date        || "—";
-    const companySelect = document.getElementById("company");
-    const selectedOpt   = companySelect.options[companySelect.selectedIndex];
-    const company       = (selectedOpt && selectedOpt.dataset.name) ? selectedOpt.dataset.name : (payload.company || "—");
+    const company       = payload.companyName || payload.company || "—";
     const departure   = payload.departure   || "—";
     const arrival     = payload.arrival     || "—";
     const depTime     = payload.departureTime || "—";
@@ -824,7 +1055,8 @@
       submitBtn.disabled = false;
       submitBtn.textContent = "送信する";
 
-      // 一部の項目はそのまま残す（日付・会社はリセット、入力値はクリア）
+      // 一時保存をクリアしてフォームをリセット
+      localStorage.removeItem("reportDraft");
       form.reset();
 
       // 稼働時間を再計算
