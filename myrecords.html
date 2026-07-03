@@ -332,6 +332,9 @@
   const LIFF_ID = "2010522430-YGmulMkA";
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
 
+  // GASウォームアップ（コールドスタート対策）
+  fetch(GAS_URL + "?action=getStaffList").catch(() => {});
+
   let lineUserId = "";
 
   // ── 年月プルダウン初期化（当月デフォルト）──
