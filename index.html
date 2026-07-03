@@ -1345,6 +1345,11 @@
       // 一時保存を削除
       localStorage.removeItem("reportDraft");
 
+      // 送信成功時もボタン状態とフラグを元に戻す（次回の報告に備える）
+      btn.disabled = false;
+      btn.textContent = "この内容で送信する";
+      isSubmitting = false;
+
       document.getElementById("confirmScreen").classList.remove("visible");
       showCompleteScreen(currentPayload);
 
