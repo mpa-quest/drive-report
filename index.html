@@ -1084,8 +1084,13 @@
           <div class="expense-file-names" id="expFileNames_${id}"></div>
         </div>
       </div>
+      <div id="expError_${id}" style="display:none; font-size:11px; color:#DC2626; margin-top:6px;"></div>
     `;
     document.getElementById("expenseList").appendChild(row);
+
+    // 入力時にリアルタイムでバリデーション
+    document.getElementById("expAmount_" + id)?.addEventListener("input", validateForm);
+    document.getElementById("expFile_"   + id)?.addEventListener("change", validateForm);
   }
 
   function removeExpenseRow(id) {
@@ -1193,6 +1198,30 @@
     } else {
       purposeErrEl.classList.remove("visible");
     }
+
+    // 立替費用チェック（行ごとに金額・領収書を確認）
+    document.querySelectorAll(".expense-row").forEach(row => {
+      const id       = row.dataset.id;
+      const amount   = document.getElementById("expAmount_"   + id)?.value || "";
+      const fileInput= document.getElementById("expFile_"     + id);
+      const files    = fileInput ? fileInput.files.length : 0;
+      const errEl    = document.getElementById("expError_"    + id);
+      if (!errEl) return;
+
+      const errors = [];
+      if (!amount || parseFloat(amount) <= 0) errors.push("金額を入力してください");
+      if (files === 0) errors.push("領収書を添付してください");
+
+      if (errors.length > 0) {
+        errEl.textContent = "⚠️ " + errors.join("・");
+        errEl.style.display = "block";
+        row.style.borderColor = "#DC2626";
+        valid = false;
+      } else {
+        errEl.style.display = "none";
+        row.style.borderColor = "";
+      }
+    });
 
     return valid;
   }
