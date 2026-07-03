@@ -468,8 +468,8 @@
         const res  = await fetch(url);
         const data = await res.json();
         if (!data.records || data.records.length === 0) { setView("empty"); return; }
-        renderTable(data.records);
-        renderSummary(data.records);
+        renderTable(data.records, "company");
+        renderSummary(data.records, "company");
         setView("table");
       } catch(e) {
         alert("通信エラーが発生しました。再度お試しください。");
@@ -485,8 +485,8 @@
         const res  = await fetch(url);
         const data = await res.json();
         if (!data.records || data.records.length === 0) { setView("empty"); return; }
-        renderTable(data.records);
-        renderSummary(data.records);
+        renderTable(data.records, "staff");
+        renderSummary(data.records, "staff");
         setView("table");
       } catch(e) {
         alert("通信エラーが発生しました。再度お試しください。");
@@ -496,7 +496,7 @@
   }
 
   // ── テーブル描画 ──
-  function renderTable(records) {
+  function renderTable(records, mode = "company") {
     const tbody = document.getElementById("tableBody");
     const tfoot = document.getElementById("tableFoot");
     tbody.innerHTML = "";
@@ -512,10 +512,15 @@
       // 稼働時間を HH:MM 形式に変換（"3時間0分" / "3:00" / "03:00" すべて対応）
       const whFormatted = formatWorkingHours(r.workingHours);
 
-      // records.htmlはcustomerと同じ表示（請求不要は非表示）でないと請求書チェックができない
+      // 会社タブ：請求不要は非表示、スタッフタブ：全額＋付記
       function fmtExpense(amount, noCharge) {
-        if (noCharge === "1") return "—"; // 請求不要は非表示
-        return amount || "—";
+        if (mode === "company") {
+          if (noCharge === "1") return "—";
+          return amount || "—";
+        } else {
+          if (!amount) return "—";
+          return amount + "円" + (noCharge === "1" ? "（請求不要）" : "");
+        }
       }
       const cells = [
         r.date, r.staffName, r.vehicle,
@@ -545,9 +550,9 @@
       const train = parseFloat(String(r.trainCommute).replace(/[^0-9.]/g, ""));
       if (!isNaN(train) && train > 0) totalTrain += train;
 
-      // 立替費用合計（請求不要は除外）
+      // 立替費用合計（会社タブ：請求不要除外、スタッフタブ：全額含む）
       [["gasoline","gasolineNC"], ["fuel","fuelNC"], ["parking","parkingNC"]].forEach(([key, ncKey]) => {
-        if (r[ncKey] === "1") return; // 請求不要はスキップ
+        if (mode === "company" && r[ncKey] === "1") return; // 会社タブは請求不要スキップ
         const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
         if (!isNaN(v) && v > 0) totalExpense += v;
       });
@@ -601,7 +606,7 @@
     return h + ":" + m;
   }
 
-  function renderSummary(records) {
+  function renderSummary(records, mode = "company") {
     document.getElementById("summaryBar").classList.add("visible");
   }
 
