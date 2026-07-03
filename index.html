@@ -1382,24 +1382,47 @@
       <div style="margin-top:6px"><span class="label">稼働時間</span><br>${working}</div>
     `;
 
-    // 「続けて報告する」ボタン：フォームをリセットして戻る
+    // 「続けて報告する」ボタン：フォームを完全リセットして戻る
     document.getElementById("btnContinue").onclick = function() {
       document.getElementById("completeScreen").classList.remove("visible");
       const form = document.querySelector("form");
       form.style.display = "";
       document.querySelector(".user-badge").style.display = "";
 
-      // 日付・会社・フォーム入力を初期化
+      // 送信ボタンを戻す
       const submitBtn = document.getElementById("submitBtn");
       submitBtn.disabled = false;
       submitBtn.textContent = "送信する";
 
-      // 一時保存をクリアしてフォームをリセット
+      // 一時保存をクリア
       localStorage.removeItem("reportDraft");
+
+      // フォームをリセット
       form.reset();
 
-      // 稼働時間を再計算
-      calcWorkingHours();
+      // 稼働時間・走行距離の表示をリセット
+      const whEl = document.getElementById("workingHours");
+      if (whEl) whEl.textContent = "—";
+      const distEl = document.getElementById("distance");
+      if (distEl) distEl.textContent = "—";
+
+      // バリデーションエラー表示をリセット
+      document.getElementById("timeError")?.classList.remove("visible");
+      document.getElementById("purposeError")?.classList.remove("visible");
+      document.getElementById("arrivalTime")?.classList.remove("input-error");
+
+      // その他入力欄を非表示に
+      ["vehicleOther", "departureOther", "arrivalOther", "purposeOther"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = "none";
+      });
+
+      // 立替費用の行をすべて削除
+      document.getElementById("expenseList").innerHTML = "";
+      expenseRowCount = 0;
+
+      // 二重送信フラグをリセット
+      isSubmitting = false;
 
       window.scrollTo({ top: 0, behavior: "smooth" });
     };
