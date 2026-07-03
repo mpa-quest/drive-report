@@ -1342,6 +1342,28 @@
         body: JSON.stringify(currentPayload),
       });
 
+      // 領収書画像がある場合は、別リクエストでDriveにアップロード
+      // （運行報告本体とは別送信にすることでGASのペイロード制限を回避）
+      const hasImages = (currentPayload.expenses || []).some(exp => exp.images && exp.images.length > 0);
+      if (hasImages) {
+        btn.textContent = "領収書をアップロード中...";
+        try {
+          await fetch(GAS_URL, {
+            method: "POST",
+            body: JSON.stringify({
+              action:      "uploadExpenseFiles",
+              company:     currentPayload.company,
+              companyName: currentPayload.companyName,
+              date:        currentPayload.date,
+              expenses:    currentPayload.expenses,
+            }),
+          });
+        } catch (uploadErr) {
+          // 領収書アップロードに失敗しても運行報告自体は完了しているので、報告は続行する
+          console.error("領収書アップロードに失敗しました", uploadErr);
+        }
+      }
+
       // 一時保存を削除
       localStorage.removeItem("reportDraft");
 
