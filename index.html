@@ -786,8 +786,7 @@
   // ── フォーム選択肢をGASから取得 ──
   async function loadFormOptions() {
     try {
-      const res  = await fetch(GAS_URL + "?action=getFormOptions");
-      const data = await res.json();
+      const data = await fetchWithCache(GAS_URL + "?action=getFormOptions", "cache_formOptions");
       setSelectOptions("vehicle",   data.vehicle   || [], true);
       setSelectOptions("departure", data.departure || [], true);
       setSelectOptions("arrival",   data.arrival   || [], true);
@@ -859,6 +858,23 @@
     }).join("、");
   }
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
+  const CACHE_TTL = 60 * 60 * 1000; // 1時間
+
+  // キャッシュ付きGETフェッチ
+  async function fetchWithCache(url, cacheKey) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const { data, ts } = JSON.parse(cached);
+      if (Date.now() - ts < CACHE_TTL) return data;
+    }
+    const res  = await fetch(url);
+    const data = await res.json();
+    localStorage.setItem(cacheKey, JSON.stringify({ data, ts: Date.now() }));
+    return data;
+  }
+
+  // GASウォームアップ（コールドスタート対策）
+  fetch(GAS_URL + "?action=getFormOptions").catch(() => {});
 
   let lineUserId = "";
   let staffId = "";
