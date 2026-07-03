@@ -448,6 +448,23 @@
 
 <script>
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
+  const CACHE_TTL = 60 * 60 * 1000; // 1時間
+
+  // キャッシュ付きfetch（GETリクエスト用）
+  async function fetchWithCache(url, cacheKey) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const { data, ts } = JSON.parse(cached);
+      if (Date.now() - ts < CACHE_TTL) return data;
+    }
+    const res  = await fetch(url);
+    const data = await res.json();
+    localStorage.setItem(cacheKey, JSON.stringify({ data, ts: Date.now() }));
+    return data;
+  }
+
+  // GASウォームアップ（コールドスタート対策）
+  fetch(GAS_URL + "?action=getCompanies").catch(() => {});
   const SESSION_KEY = "customer_session";
 
   // ── URLパラメータから会社IDを取得 ──
