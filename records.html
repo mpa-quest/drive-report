@@ -362,6 +362,23 @@
 <script>
   const LIFF_ID = "2010522430-YGmulMkA"; // ← 変更不要（既存と同じ）
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
+  const CACHE_TTL = 60 * 60 * 1000; // 1時間
+
+  // キャッシュ付きGET
+  async function fetchWithCache(url, cacheKey) {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const { data, ts } = JSON.parse(cached);
+      if (Date.now() - ts < CACHE_TTL) return data;
+    }
+    const res  = await fetch(url);
+    const data = await res.json();
+    localStorage.setItem(cacheKey, JSON.stringify({ data, ts: Date.now() }));
+    return data;
+  }
+
+  // GASウォームアップ（コールドスタート対策）
+  fetch(GAS_URL + "?action=getCompanies").catch(() => {});
 
   // ── 年月プルダウンを初期化（当月をデフォルト）──
   const now = new Date();
@@ -400,8 +417,7 @@
 
   async function loadCompanies() {
     try {
-      const res  = await fetch(`${GAS_URL}?action=getCompanies`);
-      const data = await res.json();
+      const data = await fetchWithCache(`${GAS_URL}?action=getCompanies`, "cache_companies");
       const sel  = document.getElementById("selCompany");
       sel.innerHTML = '<option value="">選択してください</option>';
       (data.companies || []).forEach(c => {
@@ -437,8 +453,7 @@
   // ── スタッフ一覧を取得 ──
   async function loadStaff() {
     try {
-      const res  = await fetch(`${GAS_URL}?action=getStaffList`);
-      const data = await res.json();
+      const data = await fetchWithCache(`${GAS_URL}?action=getStaffList`, "cache_staffList");
       const sel  = document.getElementById("selStaff");
       sel.innerHTML = '<option value="">選択してください</option>';
       (data.staff || []).forEach(s => {
