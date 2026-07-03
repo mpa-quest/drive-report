@@ -269,6 +269,10 @@
     <span class="val" id="sumTrain">—</span>
     <span class="lbl">電車通勤合計</span>
   </div>
+  <div class="summary-item">
+    <span class="val" id="sumExpense">—</span>
+    <span class="lbl">立替費用合計</span>
+  </div>
 </div>
 
 <!-- スピナー -->
@@ -313,6 +317,9 @@
         <th>メーター走行後</th>
         <th>走行距離</th>
         <th>電車通勤</th>
+        <th>ガソリン代</th>
+        <th>燃料代</th>
+        <th>パーキング代</th>
         <th>備考</th>
       </tr>
     </thead>
@@ -322,7 +329,7 @@
 </div>
 
 <script>
-  const LIFF_ID = "2010522430-sxu7AQOa";
+  const LIFF_ID = "2010522430-YGmulMkA";
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
 
   let lineUserId = "";
@@ -448,16 +455,25 @@
     let totalDistance = 0;
     let totalMinutes  = 0;
     let totalTrain    = 0;
+    let totalExpense  = 0;
 
     records.forEach(r => {
       const tr    = document.createElement("tr");
+      function fmtExpense(amount, noCharge) {
+        if (!amount) return "—";
+        return amount + "円" + (noCharge === "1" ? "（請求不要）" : "");
+      }
       const cells = [
         r.date, r.company, r.vehicle,
         r.departure, r.destination, r.arrival,
         r.departureTime, r.arrivalDate || "―", r.arrivalTime, formatWorkingHours(r.workingHours),
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
-        r.distance, r.trainCommute, r.memo,
+        r.distance, r.trainCommute,
+        fmtExpense(r.gasoline,  r.gasolineNC),
+        fmtExpense(r.fuel,      r.fuelNC),
+        fmtExpense(r.parking,   r.parkingNC),
+        r.memo,
       ];
       cells.forEach(val => {
         const td = document.createElement("td");
@@ -472,6 +488,12 @@
       totalMinutes += parseWorkingMinutes(r.workingHours);
       const train = parseFloat(String(r.trainCommute).replace(/[^0-9.]/g, ""));
       if (!isNaN(train) && train > 0) totalTrain += train;
+
+      // 立替費用合計（全額・請求不要含む）
+      ["gasoline", "fuel", "parking"].forEach(key => {
+        const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
+        if (!isNaN(v) && v > 0) totalExpense += v;
+      });
     });
 
     // 合計行
@@ -482,7 +504,7 @@
         <td colspan="14">合計（${records.length} 件）</td>
         <td>${totalDistance.toFixed(0)} km</td>
         <td>${totalTrain > 0 ? totalTrain.toLocaleString() + " 円" : "—"}</td>
-        <td></td>
+        <td></td><td></td><td></td><td></td>
       </tr>`;
 
     // サマリー
@@ -491,6 +513,8 @@
     document.getElementById("sumHours").textContent    = totalH + ":" + totalM;
     document.getElementById("sumTrain").textContent    = totalTrain > 0
       ? totalTrain.toLocaleString() + " 円" : "—";
+    document.getElementById("sumExpense").textContent  = totalExpense > 0
+      ? totalExpense.toLocaleString() + " 円" : "—";
     document.getElementById("summaryBar").classList.add("visible");
   }
 
