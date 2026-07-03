@@ -303,6 +303,10 @@
     <span class="val" id="sumTrain">0 円</span>
     <span class="lbl">電車通勤合計</span>
   </div>
+  <div class="summary-item">
+    <span class="val" id="sumExpense">—</span>
+    <span class="lbl">立替費用合計</span>
+  </div>
 </div>
 
 <!-- スピナー -->
@@ -341,6 +345,9 @@
         <th>メーター走行後</th>
         <th>走行距離</th>
         <th>電車通勤</th>
+        <th>ガソリン代</th>
+        <th>燃料代</th>
+        <th>パーキング代</th>
         <th>備考</th>
       </tr>
     </thead>
@@ -490,16 +497,6 @@
 
   // ── テーブル描画 ──
   function renderTable(records) {
-    // 日付・出発時間の昇順でソート
-    records = records.slice().sort((a, b) => {
-      const dateA = a.date ? new Date(a.date).getTime() : 0;
-      const dateB = b.date ? new Date(b.date).getTime() : 0;
-      if (dateA !== dateB) return dateA - dateB;
-      const tA = String(a.departureTime || "").trim();
-      const tB = String(b.departureTime || "").trim();
-      return tA < tB ? -1 : tA > tB ? 1 : 0;
-    });
-
     const tbody = document.getElementById("tableBody");
     const tfoot = document.getElementById("tableFoot");
     tbody.innerHTML = "";
@@ -507,6 +504,7 @@
     let totalDistance = 0;
     let totalMinutes  = 0;
     let totalTrain    = 0;
+    let totalExpense  = 0;
 
     records.forEach(r => {
       const tr = document.createElement("tr");
@@ -514,13 +512,21 @@
       // 稼働時間を HH:MM 形式に変換（"3時間0分" / "3:00" / "03:00" すべて対応）
       const whFormatted = formatWorkingHours(r.workingHours);
 
+      function fmtExpense(amount, noCharge) {
+        if (!amount) return "—";
+        return amount + "円" + (noCharge === "1" ? "（請求不要）" : "");
+      }
       const cells = [
         r.date, r.staffName, r.vehicle,
         r.departure, r.destination, r.arrival,
         r.departureTime, r.arrivalDate || "―", r.arrivalTime, whFormatted,
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
-        r.distance, r.trainCommute, r.memo,
+        r.distance, r.trainCommute,
+        fmtExpense(r.gasoline,  r.gasolineNC),
+        fmtExpense(r.fuel,      r.fuelNC),
+        fmtExpense(r.parking,   r.parkingNC),
+        r.memo,
       ];
       cells.forEach(val => {
         const td = document.createElement("td");
@@ -537,6 +543,12 @@
 
       const train = parseFloat(String(r.trainCommute).replace(/[^0-9.]/g, ""));
       if (!isNaN(train) && train > 0) totalTrain += train;
+
+      // 立替費用合計（全額・請求不要含む）
+      ["gasoline", "fuel", "parking"].forEach(key => {
+        const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
+        if (!isNaN(v) && v > 0) totalExpense += v;
+      });
     });
 
     // 合計行
@@ -547,7 +559,7 @@
         <td colspan="14">合計（${records.length} 件）</td>
         <td>${totalDistance.toFixed(0)} km</td>
         <td>${totalTrain > 0 ? totalTrain.toLocaleString() + " 円" : "—"}</td>
-        <td></td>
+        <td></td><td></td><td></td><td></td>
       </tr>`;
 
     // サマリー
@@ -556,6 +568,8 @@
     document.getElementById("sumHours").textContent    = totalH + ":" + totalM;
     document.getElementById("sumTrain").textContent    = totalTrain > 0
       ? totalTrain.toLocaleString() + " 円" : "—";
+    document.getElementById("sumExpense").textContent  = totalExpense > 0
+      ? totalExpense.toLocaleString() + " 円" : "—";
   }
 
   // 稼働時間文字列 → 総分数に変換
