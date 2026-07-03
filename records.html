@@ -530,12 +530,13 @@
       // 稼働時間を HH:MM 形式に変換（"3時間0分" / "3:00" / "03:00" すべて対応）
       const whFormatted = formatWorkingHours(r.workingHours);
 
-      // 会社タブ：請求不要は非表示、スタッフタブ：全額＋付記
+      // 会社タブ：請求不要は非表示、スタッフタブ：全額＋付記（クレカ払いは0円扱い）
       function fmtExpense(amount, noCharge) {
         if (mode === "company") {
           if (noCharge === "1") return "—";
           return amount || "—";
         } else {
+          if (r.companyCardPayment === "1") return amount ? amount + "円（クレカ払い）" : "—";
           if (!amount) return "—";
           return amount + "円" + (noCharge === "1" ? "（請求不要）" : "");
         }
@@ -568,9 +569,10 @@
       const train = parseFloat(String(r.trainCommute).replace(/[^0-9.]/g, ""));
       if (!isNaN(train) && train > 0) totalTrain += train;
 
-      // 立替費用合計（会社タブ：請求不要除外、スタッフタブ：全額含む）
+      // 立替費用合計（会社タブ：請求不要除外、スタッフタブ：クレカ払いは除外・それ以外は全額含む）
       [["gasoline","gasolineNC"], ["fuel","fuelNC"], ["parking","parkingNC"]].forEach(([key, ncKey]) => {
         if (mode === "company" && r[ncKey] === "1") return; // 会社タブは請求不要スキップ
+        if (mode !== "company" && r.companyCardPayment === "1") return; // スタッフタブはクレカ払いスキップ
         const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
         if (!isNaN(v) && v > 0) totalExpense += v;
       });
