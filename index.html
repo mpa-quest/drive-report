@@ -783,42 +783,6 @@
     }
   }
 
-  // ── フォーム選択肢をGASから取得 ──
-  async function loadFormOptions() {
-    try {
-      const data = await fetchWithCache(GAS_URL + "?action=getFormOptions", "cache_formOptions");
-      setSelectOptions("vehicle",   data.vehicle   || [], true);
-      setSelectOptions("departure", data.departure || [], true);
-      setSelectOptions("arrival",   data.arrival   || [], true);
-      // 利用目的はmultipleなのでその他あり
-      const purposeSel = document.getElementById("purpose");
-      purposeSel.innerHTML = "";
-      (data.purpose || []).forEach(item => {
-        const opt = document.createElement("option");
-        opt.value = item;
-        opt.textContent = item;
-        purposeSel.appendChild(opt);
-      });
-      const otherOpt = document.createElement("option");
-      otherOpt.value = "その他";
-      otherOpt.textContent = "その他";
-      purposeSel.appendChild(otherOpt);
-    } catch(e) {
-      // 取得失敗時はデフォルト値にフォールバック
-      console.warn("選択肢の取得に失敗しました。デフォルト値を使用します。", e);
-      setSelectOptions("vehicle",   ["アルファード", "レクサスLM", "レクサスLS"], true);
-      setSelectOptions("departure", ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
-      setSelectOptions("arrival",   ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
-      const purposeSel = document.getElementById("purpose");
-      purposeSel.innerHTML = "";
-      ["送迎", "会食", "その他"].forEach(item => {
-        const opt = document.createElement("option");
-        opt.value = item;
-        opt.textContent = item;
-        purposeSel.appendChild(opt);
-      });
-    }
-  }
 
   // =====================
   // 「その他」選択時に手入力欄を表示するトグル
@@ -875,6 +839,44 @@
 
   // GASウォームアップ（コールドスタート対策）
   fetch(GAS_URL + "?action=getFormOptions").catch(() => {});
+
+  // ── フォーム選択肢をGASから取得 ──
+  async function loadFormOptions() {
+    try {
+      const data = await fetchWithCache(GAS_URL + "?action=getFormOptions", "cache_formOptions");
+      setSelectOptions("vehicle",   data.vehicle   || [], true);
+      setSelectOptions("departure", data.departure || [], true);
+      setSelectOptions("arrival",   data.arrival   || [], true);
+      // 利用目的はmultipleなのでその他あり
+      const purposeSel = document.getElementById("purpose");
+      purposeSel.innerHTML = "";
+      (data.purpose || []).forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item;
+        opt.textContent = item;
+        purposeSel.appendChild(opt);
+      });
+      const otherOpt = document.createElement("option");
+      otherOpt.value = "その他";
+      otherOpt.textContent = "その他";
+      purposeSel.appendChild(otherOpt);
+    } catch(e) {
+      // 取得失敗時はデフォルト値にフォールバック
+      console.warn("選択肢の取得に失敗しました。デフォルト値を使用します。", e);
+      setSelectOptions("vehicle",   ["アルファード", "レクサスLM", "レクサスLS"], true);
+      setSelectOptions("departure", ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
+      setSelectOptions("arrival",   ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
+      const purposeSel = document.getElementById("purpose");
+      purposeSel.innerHTML = "";
+      ["送迎", "会食", "その他"].forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item;
+        opt.textContent = item;
+        purposeSel.appendChild(opt);
+      });
+    }
+  }
+
 
   let lineUserId = "";
   let staffId = "";
