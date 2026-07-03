@@ -364,6 +364,7 @@
   liff.init({ liffId: LIFF_ID })
     .then(async () => {
       if (!liff.isLoggedIn()) { liff.login(); return; }
+      document.getElementById("userName").textContent = "認証中...";
 
       const profile = await liff.getProfile();
       lineUserId = profile.userId;
@@ -396,6 +397,8 @@
     })
     .catch(err => {
       console.error("LIFF init error", err);
+      document.getElementById("userName").textContent = "初期化エラー";
+      document.getElementById("staffInfo").textContent = err.message || String(err);
     });
 
   // ── 検索 ──
