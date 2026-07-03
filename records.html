@@ -512,9 +512,10 @@
       // 稼働時間を HH:MM 形式に変換（"3時間0分" / "3:00" / "03:00" すべて対応）
       const whFormatted = formatWorkingHours(r.workingHours);
 
+      // records.htmlはcustomerと同じ表示（請求不要は非表示）でないと請求書チェックができない
       function fmtExpense(amount, noCharge) {
-        if (!amount) return "—";
-        return amount + "円" + (noCharge === "1" ? "（請求不要）" : "");
+        if (noCharge === "1") return "—"; // 請求不要は非表示
+        return amount || "—";
       }
       const cells = [
         r.date, r.staffName, r.vehicle,
@@ -544,8 +545,9 @@
       const train = parseFloat(String(r.trainCommute).replace(/[^0-9.]/g, ""));
       if (!isNaN(train) && train > 0) totalTrain += train;
 
-      // 立替費用合計（全額・請求不要含む）
-      ["gasoline", "fuel", "parking"].forEach(key => {
+      // 立替費用合計（請求不要は除外）
+      [["gasoline","gasolineNC"], ["fuel","fuelNC"], ["parking","parkingNC"]].forEach(([key, ncKey]) => {
+        if (r[ncKey] === "1") return; // 請求不要はスキップ
         const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
         if (!isNaN(v) && v > 0) totalExpense += v;
       });
