@@ -252,6 +252,38 @@
       transform: translateX(-50%) translateY(0);
     }
   
+  /* ── 会社クレカ払い ── */
+  .company-card-box {
+    background: #FFF8EB;
+    border: 1.5px solid #F5D38A;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+  .company-card-box .company-card-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #92660B;
+    cursor: pointer;
+  }
+  .company-card-box .company-card-check input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #B7791F;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .company-card-box .company-card-desc {
+    font-size: 11px;
+    color: #92660B;
+    margin-top: 4px;
+    margin-left: 26px;
+    line-height: 1.5;
+  }
+
   /* ── 立替費用 ── */
   .expense-list {
     display: flex;
@@ -726,6 +758,15 @@
   <!-- 立替費用 -->
   <section>
     <h2>立替費用 <span style="font-size:11px; font-weight:400; color:#9CA3AF;">任意・複数入力可</span></h2>
+    <div style="padding: 12px 16px 0;">
+      <div class="company-card-box">
+        <label class="company-card-check">
+          <input type="checkbox" id="companyCardPayment">
+          会社クレカ払い
+        </label>
+        <div class="company-card-desc">会社クレカ払いの（自分で支払っていない）場合は、チェックをお願いします</div>
+      </div>
+    </div>
     <div class="expense-list" id="expenseList"></div>
     <button type="button" class="btn-add-expense" id="btnAddExpense">＋ 費用を追加</button>
   </section>
@@ -783,6 +824,43 @@
     }
   }
 
+  // ── フォーム選択肢をGASから取得 ──
+  async function loadFormOptions() {
+    try {
+      const res  = await fetch(GAS_URL + "?action=getFormOptions");
+      const data = await res.json();
+      setSelectOptions("vehicle",   data.vehicle   || [], true);
+      setSelectOptions("departure", data.departure || [], true);
+      setSelectOptions("arrival",   data.arrival   || [], true);
+      // 利用目的はmultipleなのでその他あり
+      const purposeSel = document.getElementById("purpose");
+      purposeSel.innerHTML = "";
+      (data.purpose || []).forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item;
+        opt.textContent = item;
+        purposeSel.appendChild(opt);
+      });
+      const otherOpt = document.createElement("option");
+      otherOpt.value = "その他";
+      otherOpt.textContent = "その他";
+      purposeSel.appendChild(otherOpt);
+    } catch(e) {
+      // 取得失敗時はデフォルト値にフォールバック
+      console.warn("選択肢の取得に失敗しました。デフォルト値を使用します。", e);
+      setSelectOptions("vehicle",   ["アルファード", "レクサスLM", "レクサスLS"], true);
+      setSelectOptions("departure", ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
+      setSelectOptions("arrival",   ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
+      const purposeSel = document.getElementById("purpose");
+      purposeSel.innerHTML = "";
+      ["送迎", "会食", "その他"].forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item;
+        opt.textContent = item;
+        purposeSel.appendChild(opt);
+      });
+    }
+  }
 
   // =====================
   // 「その他」選択時に手入力欄を表示するトグル
@@ -822,61 +900,6 @@
     }).join("、");
   }
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
-  const CACHE_TTL = 60 * 60 * 1000; // 1時間
-
-  // キャッシュ付きGETフェッチ
-  async function fetchWithCache(url, cacheKey) {
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      const { data, ts } = JSON.parse(cached);
-      if (Date.now() - ts < CACHE_TTL) return data;
-    }
-    const res  = await fetch(url);
-    const data = await res.json();
-    localStorage.setItem(cacheKey, JSON.stringify({ data, ts: Date.now() }));
-    return data;
-  }
-
-  // GASウォームアップ（コールドスタート対策）
-  fetch(GAS_URL + "?action=getFormOptions").catch(() => {});
-
-  // ── フォーム選択肢をGASから取得 ──
-  async function loadFormOptions() {
-    try {
-      const data = await fetchWithCache(GAS_URL + "?action=getFormOptions", "cache_formOptions");
-      setSelectOptions("vehicle",   data.vehicle   || [], true);
-      setSelectOptions("departure", data.departure || [], true);
-      setSelectOptions("arrival",   data.arrival   || [], true);
-      // 利用目的はmultipleなのでその他あり
-      const purposeSel = document.getElementById("purpose");
-      purposeSel.innerHTML = "";
-      (data.purpose || []).forEach(item => {
-        const opt = document.createElement("option");
-        opt.value = item;
-        opt.textContent = item;
-        purposeSel.appendChild(opt);
-      });
-      const otherOpt = document.createElement("option");
-      otherOpt.value = "その他";
-      otherOpt.textContent = "その他";
-      purposeSel.appendChild(otherOpt);
-    } catch(e) {
-      // 取得失敗時はデフォルト値にフォールバック
-      console.warn("選択肢の取得に失敗しました。デフォルト値を使用します。", e);
-      setSelectOptions("vehicle",   ["アルファード", "レクサスLM", "レクサスLS"], true);
-      setSelectOptions("departure", ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
-      setSelectOptions("arrival",   ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
-      const purposeSel = document.getElementById("purpose");
-      purposeSel.innerHTML = "";
-      ["送迎", "会食", "その他"].forEach(item => {
-        const opt = document.createElement("option");
-        opt.value = item;
-        opt.textContent = item;
-        purposeSel.appendChild(opt);
-      });
-    }
-  }
-
 
   let lineUserId = "";
   let staffId = "";
@@ -1007,6 +1030,7 @@
         if (d.meterAfter)     document.getElementById("meterAfter").value     = d.meterAfter;
         if (d.trainCommute)   document.getElementById("trainCommute").value   = d.trainCommute;
         if (d.memo)           document.getElementById("memo").value           = d.memo;
+        if (d.companyCardPayment) document.getElementById("companyCardPayment").checked = true;
         calcWorkingHours();
         calcDistance();
       } else {
@@ -1086,13 +1110,8 @@
           <div class="expense-file-names" id="expFileNames_${id}"></div>
         </div>
       </div>
-      <div id="expError_${id}" style="display:none; font-size:11px; color:#DC2626; margin-top:6px;"></div>
     `;
     document.getElementById("expenseList").appendChild(row);
-
-    // 入力時にリアルタイムでバリデーション
-    document.getElementById("expAmount_" + id)?.addEventListener("input", validateForm);
-    document.getElementById("expFile_"   + id)?.addEventListener("change", validateForm);
   }
 
   function removeExpenseRow(id) {
@@ -1124,15 +1143,8 @@
       const fileInput= document.getElementById("expFile_"     + id);
       const files    = fileInput ? Array.from(fileInput.files) : [];
 
-      let images = [];
-      if (files.length > 0) {
-        // タイムアウト付きで画像処理（30秒以内に解決しない場合はエラー）
-        const timeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("画像の処理がタイムアウトしました。もう一度お試しください。")), 30000)
-        );
-        const encode = Promise.all(files.map(file => resizeAndEncode(file)));
-        images = await Promise.race([encode, timeout]);
-      }
+      // 画像をBase64化（長辺1200pxにリサイズ）
+      const images = await Promise.all(files.map(file => resizeAndEncode(file)));
 
       expenses.push({ item, amount, noCharge, images });
     }
@@ -1201,30 +1213,6 @@
       purposeErrEl.classList.remove("visible");
     }
 
-    // 立替費用チェック（行ごとに金額・領収書を確認）
-    document.querySelectorAll(".expense-row").forEach(row => {
-      const id       = row.dataset.id;
-      const amount   = document.getElementById("expAmount_"   + id)?.value || "";
-      const fileInput= document.getElementById("expFile_"     + id);
-      const files    = fileInput ? fileInput.files.length : 0;
-      const errEl    = document.getElementById("expError_"    + id);
-      if (!errEl) return;
-
-      const errors = [];
-      if (!amount || parseFloat(amount) <= 0) errors.push("金額を入力してください");
-      if (files === 0) errors.push("領収書を添付してください");
-
-      if (errors.length > 0) {
-        errEl.textContent = "⚠️ " + errors.join("・");
-        errEl.style.display = "block";
-        row.style.borderColor = "#DC2626";
-        valid = false;
-      } else {
-        errEl.style.display = "none";
-        row.style.borderColor = "";
-      }
-    });
-
     return valid;
   }
 
@@ -1246,15 +1234,7 @@
     submitBtn.textContent = "準備中...";
 
     // 立替費用を収集（画像Base64化を待つ）
-    let expenses = [];
-    try {
-      expenses = await collectExpenses();
-    } catch(e) {
-      alert("領収書の処理中にエラーが発生しました。\n\n" + e.message + "\n\n画像を確認してもう一度お試しください。");
-      submitBtn.disabled = false;
-      submitBtn.textContent = "送信する";
-      return;
-    }
+    const expenses = await collectExpenses();
 
     // payloadを組み立てて確認画面へ
     const companySelect = document.getElementById("company");
@@ -1289,6 +1269,7 @@
       companyName,
       trainCommute:  document.getElementById("trainCommute").value,
       memo:          document.getElementById("memo").value,
+      companyCardPayment: document.getElementById("companyCardPayment").checked,
       expenses,
     };
 
@@ -1328,6 +1309,7 @@
 
     // 立替費用がある場合は追加
     if (payload.expenses && payload.expenses.length > 0) {
+      rows.push(["会社クレカ払い", payload.companyCardPayment ? "✅ あり（自分は支払っていない）" : "—"]);
       payload.expenses.forEach((exp, i) => {
         rows.push([
           `立替費用${i + 1}`,
@@ -1347,41 +1329,18 @@
   // 「この内容で送信する」ボタン（二重送信防止）
   let isSubmitting = false;
   document.getElementById("btnSubmitConfirm").addEventListener("click", async () => {
-    if (isSubmitting) return;
+    if (isSubmitting) return; // 送信中なら即リターン
     isSubmitting = true;
 
     const btn = document.getElementById("btnSubmitConfirm");
     btn.disabled = true;
+    btn.textContent = "送信中...";
 
     try {
-      // ① 運行報告を送信（画像データは除く）
-      btn.textContent = "送信中...";
-      const reportPayload = Object.assign({}, currentPayload, {
-        expenses: (currentPayload.expenses || []).map(e => ({
-          item: e.item, amount: e.amount, noCharge: e.noCharge, images: [],
-        })),
-      });
       await fetch(GAS_URL, {
         method: "POST",
-        body: JSON.stringify(reportPayload),
+        body: JSON.stringify(currentPayload),
       });
-
-      // ② 画像がある場合は別途アップロード
-      const hasImages = (currentPayload.expenses || []).some(e => e.images && e.images.length > 0);
-      if (hasImages) {
-        btn.textContent = "領収書をアップロード中...";
-        const uploadPayload = {
-          action:   "uploadExpenseFiles",
-          date:     currentPayload.date,
-          company:  currentPayload.company,
-          companyName: currentPayload.companyName,
-          expenses: currentPayload.expenses,
-        };
-        await fetch(GAS_URL, {
-          method: "POST",
-          body: JSON.stringify(uploadPayload),
-        });
-      }
 
       // 一時保存を削除
       localStorage.removeItem("reportDraft");
@@ -1393,7 +1352,7 @@
       alert("送信に失敗しました。もう一度お試しください。");
       btn.disabled = false;
       btn.textContent = "この内容で送信する";
-      isSubmitting = false;
+      isSubmitting = false; // エラー時のみフラグをリセット
     }
   });
 
@@ -1429,47 +1388,24 @@
       <div style="margin-top:6px"><span class="label">稼働時間</span><br>${working}</div>
     `;
 
-    // 「続けて報告する」ボタン：フォームを完全リセットして戻る
+    // 「続けて報告する」ボタン：フォームをリセットして戻る
     document.getElementById("btnContinue").onclick = function() {
       document.getElementById("completeScreen").classList.remove("visible");
       const form = document.querySelector("form");
       form.style.display = "";
       document.querySelector(".user-badge").style.display = "";
 
-      // 送信ボタンを戻す
+      // 日付・会社・フォーム入力を初期化
       const submitBtn = document.getElementById("submitBtn");
       submitBtn.disabled = false;
       submitBtn.textContent = "送信する";
 
-      // 一時保存をクリア
+      // 一時保存をクリアしてフォームをリセット
       localStorage.removeItem("reportDraft");
-
-      // フォームをリセット
       form.reset();
 
-      // 稼働時間・走行距離の表示をリセット
-      const whEl = document.getElementById("workingHours");
-      if (whEl) whEl.textContent = "—";
-      const distEl = document.getElementById("distance");
-      if (distEl) distEl.textContent = "—";
-
-      // バリデーションエラー表示をリセット
-      document.getElementById("timeError")?.classList.remove("visible");
-      document.getElementById("purposeError")?.classList.remove("visible");
-      document.getElementById("arrivalTime")?.classList.remove("input-error");
-
-      // その他入力欄を非表示に
-      ["vehicleOther", "departureOther", "arrivalOther", "purposeOther"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = "none";
-      });
-
-      // 立替費用の行をすべて削除
-      document.getElementById("expenseList").innerHTML = "";
-      expenseRowCount = 0;
-
-      // 二重送信フラグをリセット
-      isSubmitting = false;
+      // 稼働時間を再計算
+      calcWorkingHours();
 
       window.scrollTo({ top: 0, behavior: "smooth" });
     };
