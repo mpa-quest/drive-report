@@ -466,6 +466,7 @@
     records.forEach(r => {
       const tr    = document.createElement("tr");
       function fmtExpense(amount, noCharge) {
+        if (r.companyCardPayment === "1") return amount ? amount + "円（クレカ払い）" : "—";
         if (!amount) return "—";
         return amount + "円" + (noCharge === "1" ? "（請求不要）" : "");
       }
@@ -495,11 +496,13 @@
       const train = parseFloat(String(r.trainCommute).replace(/[^0-9.]/g, ""));
       if (!isNaN(train) && train > 0) totalTrain += train;
 
-      // 立替費用合計（全額・請求不要含む）
-      ["gasoline", "fuel", "parking"].forEach(key => {
-        const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
-        if (!isNaN(v) && v > 0) totalExpense += v;
-      });
+      // 立替費用合計（全額・請求不要含む。クレカ払いは除外）
+      if (r.companyCardPayment !== "1") {
+        ["gasoline", "fuel", "parking"].forEach(key => {
+          const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
+          if (!isNaN(v) && v > 0) totalExpense += v;
+        });
+      }
     });
 
     // 合計行
