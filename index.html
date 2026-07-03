@@ -252,6 +252,124 @@
       transform: translateX(-50%) translateY(0);
     }
   
+  /* ── 立替費用 ── */
+  .expense-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .expense-row {
+    background: white;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 10px 12px;
+    position: relative;
+  }
+  .expense-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .expense-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .expense-cell label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #6B7280;
+    letter-spacing: 0.03em;
+  }
+  .expense-cell select,
+  .expense-cell input[type="number"] {
+    width: 100%;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #2D2D2D;
+    background: white;
+    -webkit-appearance: none;
+    transition: border-color 0.15s;
+  }
+  .expense-cell select:focus,
+  .expense-cell input[type="number"]:focus {
+    outline: none;
+    border-color: #1A6B3C;
+  }
+  .expense-check-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .expense-check-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #4B5563;
+    cursor: pointer;
+  }
+  .expense-check-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #1A6B3C;
+    cursor: pointer;
+  }
+  .expense-file-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #1A6B3C;
+    border: 1px solid #B7E4C7;
+    background: #F0FFF6;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .expense-file-label:active { background: #D1FAE5; }
+  .expense-file-input { display: none; }
+  .expense-file-names {
+    font-size: 10px;
+    color: #6B7280;
+    margin-top: 3px;
+    word-break: break-all;
+  }
+  .expense-delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: #9CA3AF;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+  }
+  .expense-delete-btn:active { color: #DC2626; }
+  .btn-add-expense {
+    width: 100%;
+    background: white;
+    color: #1A6B3C;
+    border: 1.5px dashed #B7E4C7;
+    border-radius: 10px;
+    padding: 11px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-add-expense:active { background: #F0FFF6; }
+
   /* ── 確認画面 ── */
   .confirm-screen {
     display: none;
@@ -476,11 +594,7 @@
     <div class="field">
       <label>車両<span class="required">*</span></label>
       <select id="vehicle" required onchange="toggleOther('vehicle', 'vehicleOther')">
-        <option value="">選択してください</option>
-        <option>アルファード</option>
-        <option>レクサスLM</option>
-        <option>レクサスLS</option>
-        <option>その他</option>
+        <option value="">読み込み中...</option>
       </select>
       <input type="text" id="vehicleOther" placeholder="車両名を入力" style="display:none; margin-top:6px;">
     </div>
@@ -503,12 +617,7 @@
     <div class="field">
       <label>出発地<span class="required">*</span></label>
       <select id="departure" required onchange="toggleOther('departure', 'departureOther')">
-        <option value="">選択してください</option>
-        <option>社長自宅</option>
-        <option>会社</option>
-        <option>ドライバー自宅</option>
-        <option>駐車場</option>
-        <option>その他</option>
+        <option value="">読み込み中...</option>
       </select>
       <input type="text" id="departureOther" placeholder="出発地を入力" style="display:none; margin-top:6px;">
     </div>
@@ -519,12 +628,7 @@
     <div class="field">
       <label>到着地</label>
       <select id="arrival" onchange="toggleOther('arrival', 'arrivalOther')">
-        <option value="">選択してください</option>
-        <option>社長自宅</option>
-        <option>会社</option>
-        <option>ドライバー自宅</option>
-        <option>駐車場</option>
-        <option>その他</option>
+        <option value="">読み込み中...</option>
       </select>
       <input type="text" id="arrivalOther" placeholder="到着地を入力" style="display:none; margin-top:6px;">
     </div>
@@ -588,9 +692,7 @@
     <div class="field">
       <label>利用目的<span class="required">*</span><span style="font-size:10px; font-weight:400; color:#9CA3AF; margin-left:6px;">複数選択可</span></label>
       <select id="purpose" multiple required style="height:99px;" onchange="toggleOther('purpose', 'purposeOther', true)">
-        <option>送迎</option>
-        <option>会食</option>
-        <option>その他</option>
+        <option value="">読み込み中...</option>
       </select>
       <input type="text" id="purposeOther" placeholder="利用目的を入力" style="display:none; margin-top:6px;">
       <span class="field-error" id="purposeError">⚠️ 利用目的を選択してください</span>
@@ -619,6 +721,13 @@
       <label>備考</label>
       <textarea id="memo" placeholder="特記事項があれば入力してください"></textarea>
     </div>
+  </section>
+
+  <!-- 立替費用 -->
+  <section>
+    <h2>立替費用 <span style="font-size:11px; font-weight:400; color:#9CA3AF;">任意・複数入力可</span></h2>
+    <div class="expense-list" id="expenseList"></div>
+    <button type="button" class="btn-add-expense" id="btnAddExpense">＋ 費用を追加</button>
   </section>
 
   <div class="submit-wrap">
@@ -654,6 +763,63 @@
 
 <script>
   const LIFF_ID = "2010522430-YGmulMkA";
+
+  // ── 選択肢をセットするヘルパー ──
+  // hasOther=true の場合は末尾に「その他」を自動追加
+  function setSelectOptions(selectId, items, hasOther = true) {
+    const sel = document.getElementById(selectId);
+    sel.innerHTML = '<option value="">選択してください</option>';
+    items.forEach(item => {
+      const opt = document.createElement("option");
+      opt.value = item;
+      opt.textContent = item;
+      sel.appendChild(opt);
+    });
+    if (hasOther) {
+      const opt = document.createElement("option");
+      opt.value = "その他";
+      opt.textContent = "その他";
+      sel.appendChild(opt);
+    }
+  }
+
+  // ── フォーム選択肢をGASから取得 ──
+  async function loadFormOptions() {
+    try {
+      const res  = await fetch(GAS_URL + "?action=getFormOptions");
+      const data = await res.json();
+      setSelectOptions("vehicle",   data.vehicle   || [], true);
+      setSelectOptions("departure", data.departure || [], true);
+      setSelectOptions("arrival",   data.arrival   || [], true);
+      // 利用目的はmultipleなのでその他あり
+      const purposeSel = document.getElementById("purpose");
+      purposeSel.innerHTML = "";
+      (data.purpose || []).forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item;
+        opt.textContent = item;
+        purposeSel.appendChild(opt);
+      });
+      const otherOpt = document.createElement("option");
+      otherOpt.value = "その他";
+      otherOpt.textContent = "その他";
+      purposeSel.appendChild(otherOpt);
+    } catch(e) {
+      // 取得失敗時はデフォルト値にフォールバック
+      console.warn("選択肢の取得に失敗しました。デフォルト値を使用します。", e);
+      setSelectOptions("vehicle",   ["アルファード", "レクサスLM", "レクサスLS"], true);
+      setSelectOptions("departure", ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
+      setSelectOptions("arrival",   ["社長自宅", "会社", "ドライバー自宅", "駐車場"], true);
+      const purposeSel = document.getElementById("purpose");
+      purposeSel.innerHTML = "";
+      ["送迎", "会食", "その他"].forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item;
+        opt.textContent = item;
+        purposeSel.appendChild(opt);
+      });
+    }
+  }
 
   // =====================
   // 「その他」選択時に手入力欄を表示するトグル
@@ -698,6 +864,9 @@
   let staffId = "";
   let staffName = "";
   let companyIds = [];
+
+  // 選択肢はLIFF初期化と並行して取得（早期表示）
+  loadFormOptions();
 
   liff.init({ liffId: LIFF_ID })
     .then(async () => {
@@ -863,6 +1032,111 @@
   document.getElementById("meterBefore").addEventListener("input", calcDistance);
   document.getElementById("meterAfter").addEventListener("input", calcDistance);
 
+  // ── 立替費用 ──
+  let expenseRowCount = 0;
+  const EXPENSE_ITEMS = ["ガソリン代", "燃料代", "パーキング代"];
+
+  function addExpenseRow() {
+    expenseRowCount++;
+    const id  = expenseRowCount;
+    const row = document.createElement("div");
+    row.className = "expense-row";
+    row.dataset.id = id;
+    row.innerHTML = `
+      <button type="button" class="expense-delete-btn" onclick="removeExpenseRow(${id})">✕</button>
+      <div class="expense-grid">
+        <div class="expense-cell">
+          <label>項目</label>
+          <select id="expItem_${id}">
+            ${EXPENSE_ITEMS.map(i => `<option value="${i}">${i}</option>`).join("")}
+          </select>
+        </div>
+        <div class="expense-cell">
+          <label>金額（円）</label>
+          <input type="number" id="expAmount_${id}" placeholder="例：3000" min="0">
+        </div>
+      </div>
+      <div class="expense-check-row">
+        <label class="expense-check-item">
+          <input type="checkbox" id="expNoCharge_${id}">
+          お客様への請求不要
+        </label>
+        <div>
+          <label class="expense-file-label" for="expFile_${id}">📎 領収書を添付</label>
+          <input type="file" class="expense-file-input" id="expFile_${id}"
+            accept="image/*" multiple onchange="updateFileNames(${id})">
+          <div class="expense-file-names" id="expFileNames_${id}"></div>
+        </div>
+      </div>
+    `;
+    document.getElementById("expenseList").appendChild(row);
+  }
+
+  function removeExpenseRow(id) {
+    const row = document.querySelector(`.expense-row[data-id="${id}"]`);
+    if (row) row.remove();
+  }
+
+  function updateFileNames(id) {
+    const input = document.getElementById("expFile_" + id);
+    const names = document.getElementById("expFileNames_" + id);
+    if (input.files.length === 0) {
+      names.textContent = "";
+    } else {
+      names.textContent = Array.from(input.files).map(f => f.name).join("、");
+    }
+  }
+
+  document.getElementById("btnAddExpense").addEventListener("click", addExpenseRow);
+
+  // 立替費用データを収集（画像はBase64化）
+  async function collectExpenses() {
+    const rows = document.querySelectorAll(".expense-row");
+    const expenses = [];
+    for (const row of rows) {
+      const id       = row.dataset.id;
+      const item     = document.getElementById("expItem_"     + id)?.value || "";
+      const amount   = document.getElementById("expAmount_"   + id)?.value || "";
+      const noCharge = document.getElementById("expNoCharge_" + id)?.checked || false;
+      const fileInput= document.getElementById("expFile_"     + id);
+      const files    = fileInput ? Array.from(fileInput.files) : [];
+
+      // 画像をBase64化（長辺1200pxにリサイズ）
+      const images = await Promise.all(files.map(file => resizeAndEncode(file)));
+
+      expenses.push({ item, amount, noCharge, images });
+    }
+    return expenses;
+  }
+
+  // 画像リサイズ＋Base64変換
+  function resizeAndEncode(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1200;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+            else       { w = Math.round(w * MAX / h); h = MAX; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve({
+            name:     file.name,
+            mimeType: file.type || "image/jpeg",
+            data:     canvas.toDataURL("image/jpeg", 0.85).split(",")[1],
+          });
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   // ── バリデーション ──
   function validateForm() {
     let valid = true;
@@ -908,9 +1182,17 @@
   // ── フォーム送信 → 確認画面へ ──
   let currentPayload = null;
 
-  document.getElementById("reportForm").addEventListener("submit", (e) => {
+  document.getElementById("reportForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
+
+    // 送信ボタンを一時的に無効化（画像処理中）
+    const submitBtn = document.getElementById("submitBtn");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "準備中...";
+
+    // 立替費用を収集（画像Base64化を待つ）
+    const expenses = await collectExpenses();
 
     // payloadを組み立てて確認画面へ
     const companySelect = document.getElementById("company");
@@ -945,10 +1227,15 @@
       companyName,
       trainCommute:  document.getElementById("trainCommute").value,
       memo:          document.getElementById("memo").value,
+      expenses,
     };
 
-    // localStorage に一時保存
-    localStorage.setItem("reportDraft", JSON.stringify(currentPayload));
+    // localStorage に一時保存（画像データは除く）
+    const draftForStorage = Object.assign({}, currentPayload, { expenses: expenses.map(e => ({ item: e.item, amount: e.amount, noCharge: e.noCharge })) });
+    localStorage.setItem("reportDraft", JSON.stringify(draftForStorage));
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = "送信する";
 
     showConfirmScreen(currentPayload);
   });
@@ -976,6 +1263,16 @@
       ["電車通勤",   payload.trainCommute ? payload.trainCommute + " 円" : "—"],
       ["備考",       payload.memo || "—"],
     ];
+
+    // 立替費用がある場合は追加
+    if (payload.expenses && payload.expenses.length > 0) {
+      payload.expenses.forEach((exp, i) => {
+        rows.push([
+          `立替費用${i + 1}`,
+          `${exp.item}　${exp.amount ? exp.amount + " 円" : "—"}　${exp.noCharge ? "（請求不要）" : ""}　${exp.images && exp.images.length > 0 ? "📎 " + exp.images.length + "枚" : ""}`
+        ]);
+      });
+    }
 
     const table = document.getElementById("confirmTable");
     table.innerHTML = rows.map(([label, val]) =>
