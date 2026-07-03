@@ -1101,8 +1101,15 @@
       const fileInput= document.getElementById("expFile_"     + id);
       const files    = fileInput ? Array.from(fileInput.files) : [];
 
-      // 画像をBase64化（長辺1200pxにリサイズ）
-      const images = await Promise.all(files.map(file => resizeAndEncode(file)));
+      let images = [];
+      if (files.length > 0) {
+        // タイムアウト付きで画像処理（30秒以内に解決しない場合はエラー）
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("画像の処理がタイムアウトしました。もう一度お試しください。")), 30000)
+        );
+        const encode = Promise.all(files.map(file => resizeAndEncode(file)));
+        images = await Promise.race([encode, timeout]);
+      }
 
       expenses.push({ item, amount, noCharge, images });
     }
@@ -1192,7 +1199,15 @@
     submitBtn.textContent = "準備中...";
 
     // 立替費用を収集（画像Base64化を待つ）
-    const expenses = await collectExpenses();
+    let expenses = [];
+    try {
+      expenses = await collectExpenses();
+    } catch(e) {
+      alert("領収書の処理中にエラーが発生しました。\n\n" + e.message + "\n\n画像を確認してもう一度お試しください。");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "送信する";
+      return;
+    }
 
     // payloadを組み立てて確認画面へ
     const companySelect = document.getElementById("company");
