@@ -1300,18 +1300,41 @@
   // 「この内容で送信する」ボタン（二重送信防止）
   let isSubmitting = false;
   document.getElementById("btnSubmitConfirm").addEventListener("click", async () => {
-    if (isSubmitting) return; // 送信中なら即リターン
+    if (isSubmitting) return;
     isSubmitting = true;
 
     const btn = document.getElementById("btnSubmitConfirm");
     btn.disabled = true;
-    btn.textContent = "送信中...";
 
     try {
+      // ① 運行報告を送信（画像データは除く）
+      btn.textContent = "送信中...";
+      const reportPayload = Object.assign({}, currentPayload, {
+        expenses: (currentPayload.expenses || []).map(e => ({
+          item: e.item, amount: e.amount, noCharge: e.noCharge, images: [],
+        })),
+      });
       await fetch(GAS_URL, {
         method: "POST",
-        body: JSON.stringify(currentPayload),
+        body: JSON.stringify(reportPayload),
       });
+
+      // ② 画像がある場合は別途アップロード
+      const hasImages = (currentPayload.expenses || []).some(e => e.images && e.images.length > 0);
+      if (hasImages) {
+        btn.textContent = "領収書をアップロード中...";
+        const uploadPayload = {
+          action:   "uploadExpenseFiles",
+          date:     currentPayload.date,
+          company:  currentPayload.company,
+          companyName: currentPayload.companyName,
+          expenses: currentPayload.expenses,
+        };
+        await fetch(GAS_URL, {
+          method: "POST",
+          body: JSON.stringify(uploadPayload),
+        });
+      }
 
       // 一時保存を削除
       localStorage.removeItem("reportDraft");
@@ -1323,7 +1346,7 @@
       alert("送信に失敗しました。もう一度お試しください。");
       btn.disabled = false;
       btn.textContent = "この内容で送信する";
-      isSubmitting = false; // エラー時のみフラグをリセット
+      isSubmitting = false;
     }
   });
 
