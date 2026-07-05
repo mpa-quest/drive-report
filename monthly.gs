@@ -567,27 +567,45 @@ function writeDetailRows(sheet, rows, type) {
       const displayDate        = toDateStr(r.date);
       const displayArrivalDate = toDateStr(r.arrivalDate);
 
-      // 立替費用：会社クレカ払いチェックありはスタッフ請求書に反映しない→運行管理表では実費記載
-      // お客様請求不要チェックありは会社請求書・運行管理表に反映しない→0表示
+      // 立替費用：請求不要チェックありは0表示
       const gasolineVal = r.gasolineNC ? 0 : (parseFloat(r.gasoline) || 0);
       const fuelVal     = r.fuelNC     ? 0 : (parseFloat(r.fuel)     || 0);
       const parkingVal  = r.parkingNC  ? 0 : (parseFloat(r.parking)  || 0);
 
-      // データを書き込み
-      // 列順: 日付,運行者,車両,出発,行き先,到着,出発時間,到着日,到着時間,稼働時間,利用者,利用目的,メーター前,メーター後,走行距離,電車通勤,ガソリン代,燃料代,パーキング代,備考
-      sheet.getRange(row, 1, 1, 20).setValues([[
-        displayDate, r.staffName, r.vehicle,
-        r.departure, r.destination, r.arrival,
-        dispDepartureTime, displayArrivalDate, dispArrivalTime, workingSerial,
-        r.passenger, r.purpose,
-        r.meterBefore, r.meterAfter, r.distance,
-        r.trainCommute,
-        gasolineVal || "", fuelVal || "", parkingVal || "",
-        r.memo,
-      ]]);
+      // テンプレートのヘッダー名で動的に列マップを取得して書き込む（列順変更に対応）
+      const kanriCm = getColumnMapFromSheet(sheet);
+      function setKanri(colName, value) {
+        if (kanriCm[colName] === undefined) return;
+        const colIdx = kanriCm[colName] + 1; // 0-indexed → 1-indexed
+        sheet.getRange(row, colIdx).setValue(value);
+      }
 
-      // 稼働時間（J列 = 10列目）の表示形式を「[h]:mm」に設定
-      sheet.getRange(row, 10).setNumberFormat("[h]:mm");
+      setKanri("日付",         displayDate);
+      setKanri("運行者",       r.staffName);
+      setKanri("車両",         r.vehicle);
+      setKanri("出発",         r.departure);
+      setKanri("行き先",       r.destination);
+      setKanri("到着",         r.arrival);
+      setKanri("出発時間",     dispDepartureTime);
+      setKanri("到着日",       displayArrivalDate);
+      setKanri("到着時間",     dispArrivalTime);
+      setKanri("利用者",       r.passenger);
+      setKanri("利用目的",     r.purpose);
+      setKanri("メーター走行前", r.meterBefore);
+      setKanri("メーター走行後", r.meterAfter);
+      setKanri("走行距離",     r.distance);
+      setKanri("電車通勤",     r.trainCommute);
+      setKanri("ガソリン代",   gasolineVal || "");
+      setKanri("燃料代",       fuelVal     || "");
+      setKanri("パーキング代", parkingVal  || "");
+      setKanri("備考",         r.memo);
+
+      // 稼働時間は数値（シリアル値）で書き込み・表示形式を[h]:mmに設定
+      if (kanriCm["稼働時間"] !== undefined) {
+        const whColIdx = kanriCm["稼働時間"] + 1;
+        sheet.getRange(row, whColIdx).setValue(workingSerial);
+        sheet.getRange(row, whColIdx).setNumberFormat("[h]:mm");
+      }
       
     } else {
       // お客様請求書・ドライバー請求書用
@@ -597,19 +615,24 @@ function writeDetailRows(sheet, rows, type) {
     }
   });
 
-  // 運行管理表（kanri）の場合のみ、合計行（37行目固定）にSUM式を設定する
+  // 運行管理表（kanri）の場合のみ、合計行にSUM式を設定する
   // ※稼働時間合計はテンプレートに既存式があるためGASからは書き込まない
   if (type === "kanri" && rows.length > 0) {
     const lastDataRow = startRow + rows.length - 1;
-    const targetTotalRow = 37;
+    const targetTotalRow = 37; // 合計値行（36行目がラベル、37行目が数値）
 
     Logger.log("    合計行を設定：" + targetTotalRow + "行目（データ " + startRow + "〜" + lastDataRow + "行）");
 
-    // 電車通勤合計（P列=16）・ガソリン代合計（Q列=17）・燃料代合計（R列=18）・パーキング代合計（S列=19）
-    sheet.getRange(targetTotalRow, 16).setFormula("=SUM(P" + startRow + ":P" + lastDataRow + ")");
-    sheet.getRange(targetTotalRow, 17).setFormula("=SUM(Q" + startRow + ":Q" + lastDataRow + ")");
-    sheet.getRange(targetTotalRow, 18).setFormula("=SUM(R" + startRow + ":R" + lastDataRow + ")");
-    sheet.getRange(targetTotalRow, 19).setFormula("=SUM(S" + startRow + ":S" + lastDataRow + ")");
+    // ヘッダー名で列番号を動的取得してSUM式を設定（列順変更に対応）
+    const sumCm = getColumnMapFromSheet(sheet);
+    const sumTargets = ["電車通勤", "ガソリン代", "燃料代", "パーキング代"];
+    sumTargets.forEach(function(colName) {
+      if (sumCm[colName] === undefined) return;
+      const colIdx  = sumCm[colName] + 1; // 0-indexed → 1-indexed
+      const colLetter = columnToLetter_(colIdx);
+      sheet.getRange(targetTotalRow, colIdx)
+           .setFormula("=SUM(" + colLetter + startRow + ":" + colLetter + lastDataRow + ")");
+    });
   }
 
   Logger.log("    明細書き込み完了：type=" + type);
@@ -663,6 +686,17 @@ function savePdfSingleSheet(ss, copyFile, fileName, folder, sheetName) {
 // =====================
 // ヘッダー行から列名→インデックスのマップを動的生成
 // =====================
+// 列番号（1-indexed）をA1形式のアルファベットに変換するヘルパー
+function columnToLetter_(col) {
+  let letter = "";
+  while (col > 0) {
+    const mod = (col - 1) % 26;
+    letter = String.fromCharCode(65 + mod) + letter;
+    col = Math.floor((col - 1) / 26);
+  }
+  return letter;
+}
+
 function getColumnMapFromSheet(sheet) {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const map = {};
