@@ -604,7 +604,7 @@ function writeDetailRows(sheet, rows, type) {
     const currentValues = sheet.getDataRange().getValues();
     let totalRowIndex = -1;
     for (let i = 0; i < currentValues.length; i++) {
-      if (String(currentValues[i][9]).includes("稼働時間合計") || String(currentValues[i][14]).includes("合計")) {
+      if (String(currentValues[i][10]).includes("稼働時間合計") || String(currentValues[i][15]).includes("合計")) {
         totalRowIndex = i + 1;
         break;
       }
