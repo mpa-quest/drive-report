@@ -165,8 +165,15 @@ function getMonthlyRecords(db, year, month) {
         meterBefore:   row[cm["メーター走行前"]],
         meterAfter:    row[cm["メーター走行後"]],
         distance:      row[cm["走行距離"]],
-        trainCommute:  row[cm["電車通勤"]],
-        memo:          row[cm["備考"]],
+        trainCommute:       row[cm["電車通勤"]],
+        memo:               row[cm["備考"]],
+        companyCardPayment: row[cm["会社クレカ払い"]] === "1",
+        gasoline:           row[cm["ガソリン代"]],
+        gasolineNC:         row[cm["ガソリン代_チェック"]] === "1",
+        fuel:               row[cm["燃料代"]],
+        fuelNC:             row[cm["燃料代_チェック"]] === "1",
+        parking:            row[cm["パーキング代"]],
+        parkingNC:          row[cm["パーキング代_チェック"]] === "1",
       });
     }
   }
@@ -223,6 +230,11 @@ function getCompanyMap(db) {
 // ① ドライバー請求書を生成
 // =====================
 function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, templateId, folder) {
+  // 発行日（マクロ実行日）・請求番号用月キー（YYYYMM形式）
+  const now            = new Date();
+  const issueDate      = Utilities.formatDate(now, "Asia/Tokyo", "yyyy年MM月dd日");
+  const invoiceMonthKey = targetLabel.replace("年", "").replace("月", ""); // 例: "202506"
+
   const grouped = {};
   records.forEach(function(r) {
     if (!grouped[r.staffId]) grouped[r.staffId] = [];
@@ -257,6 +269,8 @@ function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, temp
     replaceInSheet(sheet, "{{銀行名}}",      staff.bankName   || "");
     replaceInSheet(sheet, "{{支店名}}",      staff.branchName || "");
     replaceInSheet(sheet, "{{口座番号}}",    staff.accountNum || "");
+    replaceInSheet(sheet, "{{発行日}}",      issueDate);
+    replaceInSheet(sheet, "{{請求番号}}",    staffId + "_" + invoiceMonthKey + "_00");
 
     // 振込期日（C16固定）
     sheet.getRange("C16").setValue(paymentDate);
@@ -274,6 +288,11 @@ function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, temp
 // ② 運行管理表・お客様請求書を生成
 // =====================
 function generateCompanyDocs(records, companyMap, targetLabel, paymentDate, templateId, kanriFolder, companyFolder) {
+  // 発行日（マクロ実行日）・請求番号用月キー（YYYYMM形式）
+  const now             = new Date();
+  const issueDate       = Utilities.formatDate(now, "Asia/Tokyo", "yyyy年MM月dd日");
+  const invoiceMonthKey = targetLabel.replace("年", "").replace("月", ""); // 例: "202506"
+
   const grouped = {};
   records.forEach(function(r) {
     const cid = r.company;
@@ -327,7 +346,9 @@ function generateCompanyDocs(records, companyMap, targetLabel, paymentDate, temp
     const invoiceSS    = SpreadsheetApp.openById(invoiceCopy.getId());
     const invoiceSheet = invoiceSS.getSheetByName("お客様請求書");
 
-    replaceInSheet(invoiceSheet, "{{会社名}}", company.companyName);
+    replaceInSheet(invoiceSheet, "{{会社名}}",   company.companyName);
+    replaceInSheet(invoiceSheet, "{{発行日}}",   issueDate);
+    replaceInSheet(invoiceSheet, "{{請求番号}}", companyId + "_" + invoiceMonthKey + "_00");
 
     // 振込期日（C16固定）
     invoiceSheet.getRange("C16").setValue(paymentDate);
@@ -342,6 +363,9 @@ function generateCompanyDocs(records, companyMap, targetLabel, paymentDate, temp
 // ③ Gmailの下書きを作成（お客様請求書＆運行管理表を2点添付）
 // =====================
 function createGmailDrafts(companyMap, companyFolder, kanriFolder, targetLabel) {
+  // 差出人メールアドレス（スクリプトプロパティ FROM_EMAIL）
+  const props     = PropertiesService.getScriptProperties();
+  const fromEmail = props.getProperty("FROM_EMAIL") || "";
   // ① 会社フォルダ（請求書）内のファイルをマッピング
   const companyFiles = companyFolder.getFiles();
   const companyFileMap = {};
@@ -412,7 +436,10 @@ function createGmailDrafts(companyMap, companyFolder, kanriFolder, targetLabel) 
       company.email,
       subject,
       body,
-      { attachments: attachments }
+      {
+        attachments: attachments,
+        ...(fromEmail ? { from: fromEmail } : {}),
+      }
     );
     Logger.log("  下書き作成完了：" + company.companyName + "（添付 " + attachments.length + " 件）");
     draftCount++;
@@ -540,15 +567,23 @@ function writeDetailRows(sheet, rows, type) {
       const displayDate        = toDateStr(r.date);
       const displayArrivalDate = toDateStr(r.arrivalDate);
 
+      // 立替費用：会社クレカ払いチェックありはスタッフ請求書に反映しない→運行管理表では実費記載
+      // お客様請求不要チェックありは会社請求書・運行管理表に反映しない→0表示
+      const gasolineVal = r.gasolineNC ? 0 : (parseFloat(r.gasoline) || 0);
+      const fuelVal     = r.fuelNC     ? 0 : (parseFloat(r.fuel)     || 0);
+      const parkingVal  = r.parkingNC  ? 0 : (parseFloat(r.parking)  || 0);
+
       // データを書き込み
-      // 列順: 日付,運行者,車両,出発,行き先,到着,出発時間,到着日,到着時間,稼働時間,利用者,利用目的,メーター前,メーター後,走行距離,電車通勤,備考
-      sheet.getRange(row, 1, 1, 17).setValues([[
+      // 列順: 日付,運行者,車両,出発,行き先,到着,出発時間,到着日,到着時間,稼働時間,利用者,利用目的,メーター前,メーター後,走行距離,電車通勤,ガソリン代,燃料代,パーキング代,備考
+      sheet.getRange(row, 1, 1, 20).setValues([[
         displayDate, r.staffName, r.vehicle,
         r.departure, r.destination, r.arrival,
         dispDepartureTime, displayArrivalDate, dispArrivalTime, workingSerial,
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter, r.distance,
-        r.trainCommute, r.memo,
+        r.trainCommute,
+        gasolineVal || "", fuelVal || "", parkingVal || "",
+        r.memo,
       ]]);
 
       // 稼働時間（J列 = 10列目）の表示形式を「[h]:mm」に設定
@@ -586,9 +621,12 @@ function writeDetailRows(sheet, rows, type) {
       // 合計欄の表示形式も「[h]:mm」（24時間を超えても合計できる形式）に設定
       sheet.getRange(targetTotalRow, 10).setNumberFormat("[h]:mm");
 
-      // 走行距離合計（O列 = 15列目）と電車通勤合計（P列 = 16列目）
+      // 走行距離合計（O列=15）・電車通勤合計（P列=16）・ガソリン代合計（Q列=17）・燃料代合計（R列=18）・パーキング代合計（S列=19）
       sheet.getRange(targetTotalRow, 15).setFormula("=SUM(O" + startRow + ":O" + lastDataRow + ")");
       sheet.getRange(targetTotalRow, 16).setFormula("=SUM(P" + startRow + ":P" + lastDataRow + ")");
+      sheet.getRange(targetTotalRow, 17).setFormula("=SUM(Q" + startRow + ":Q" + lastDataRow + ")");
+      sheet.getRange(targetTotalRow, 18).setFormula("=SUM(R" + startRow + ":R" + lastDataRow + ")");
+      sheet.getRange(targetTotalRow, 19).setFormula("=SUM(S" + startRow + ":S" + lastDataRow + ")");
     }
   }
 
