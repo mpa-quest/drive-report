@@ -600,7 +600,8 @@ function writeDetailRows(sheet, rows, type) {
   // 運行管理表（kanri）の場合のみ、合計行（36行目固定）にSUM式を設定する
   if (type === "kanri" && rows.length > 0) {
     const lastDataRow = startRow + rows.length - 1;
-    const targetTotalRow = 36;
+    // 合計行：36行目がラベル行、37行目が数値行（固定）
+    const targetTotalRow = 37;
 
     Logger.log("    合計行を設定：" + targetTotalRow + "行目（データ " + startRow + "〜" + lastDataRow + "行）");
 
