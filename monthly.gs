@@ -495,8 +495,15 @@ function writeDetailRows(sheet, rows, type) {
   const displayValues = recordSheet.getDataRange().getDisplayValues();
 
   // ヘッダー名→列インデックスマップをループ外で1回だけ取得（パフォーマンス対策）
-  const kanriCm = (type === "kanri") ? getColumnMapFromSheet(sheet) : {};
-  const dcm     = getColumnMapFromSheet(recordSheet); // 運行記録シートの列マップ（ループ外で取得）
+  // ※ startRow-1 がヘッダー行（テンプレートが複数行タイトルを持つ場合でも正しく取得できる）
+  function buildColMap(targetSheet, headerRow) {
+    const headers = targetSheet.getRange(headerRow, 1, 1, targetSheet.getLastColumn()).getValues()[0];
+    const map = {};
+    headers.forEach(function(h, i) { if (h) map[String(h).trim()] = i + 1; }); // 1-indexed
+    return map;
+  }
+  const kanriCm = (type === "kanri") ? buildColMap(sheet, startRow - 1) : {};
+  const dcm     = getColumnMapFromSheet(recordSheet); // 運行記録シートは1行目がヘッダー
 
   rows.forEach(function(r, idx) {
     const row = startRow + idx;
@@ -577,7 +584,7 @@ function writeDetailRows(sheet, rows, type) {
 
       // テンプレートのヘッダー名で動的に列マップを取得して書き込む（列順変更に対応）
       // ヘッダー名で列位置を動的取得しつつ、書き込みは行単位でまとめて実行（高速化）
-      function getCol(name) { return kanriCm[name] !== undefined ? kanriCm[name] + 1 : -1; }
+      function getCol(name) { return kanriCm[name] !== undefined ? kanriCm[name] : -1; } // buildColMapは既に1-indexed
 
       // 書き込む列・値のペアを配列で構築
       const writes = [
@@ -630,12 +637,11 @@ function writeDetailRows(sheet, rows, type) {
 
     Logger.log("    合計行を設定：" + targetTotalRow + "行目（データ " + startRow + "〜" + lastDataRow + "行）");
 
-    // ヘッダー名で列番号を動的取得してSUM式を設定（列順変更に対応）
-    const sumCm = getColumnMapFromSheet(sheet);
+    // ヘッダー名で列番号を動的取得してSUM式を設定（kanriCmを再利用・ヘッダー行は startRow-1）
     const sumTargets = ["電車通勤", "ガソリン代", "燃料代", "パーキング代"];
     sumTargets.forEach(function(colName) {
-      if (sumCm[colName] === undefined) return;
-      const colIdx  = sumCm[colName] + 1; // 0-indexed → 1-indexed
+      if (kanriCm[colName] === undefined) return;
+      const colIdx    = kanriCm[colName]; // buildColMapは既に1-indexed
       const colLetter = columnToLetter_(colIdx);
       sheet.getRange(targetTotalRow, colIdx)
            .setFormula("=SUM(" + colLetter + startRow + ":" + colLetter + lastDataRow + ")");
