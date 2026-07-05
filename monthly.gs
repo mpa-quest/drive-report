@@ -597,37 +597,22 @@ function writeDetailRows(sheet, rows, type) {
     }
   });
 
-  // 運行管理表（kanri）の場合のみ、稼働時間合計と走行距離合計の数式を再設定する
+  // 運行管理表（kanri）の場合のみ、合計行（36行目固定）にSUM式を設定する
   if (type === "kanri" && rows.length > 0) {
     const lastDataRow = startRow + rows.length - 1;
-    
-    const currentValues = sheet.getDataRange().getValues();
-    let totalRowIndex = -1;
-    for (let i = 0; i < currentValues.length; i++) {
-      if (String(currentValues[i][10]).includes("稼働時間合計") || String(currentValues[i][15]).includes("合計")) {
-        totalRowIndex = i + 1;
-        break;
-      }
-    }
+    const targetTotalRow = 36;
 
-    if (totalRowIndex === -1) {
-      Logger.log("    ⚠️ 合計行が見つからないためSUM式の書き込みをスキップします");
-    } else {
-      const targetTotalRow = totalRowIndex;
-      Logger.log("    合計行を設定：" + targetTotalRow + "行目（データ " + startRow + "〜" + lastDataRow + "行）");
+    Logger.log("    合計行を設定：" + targetTotalRow + "行目（データ " + startRow + "〜" + lastDataRow + "行）");
 
-      // 稼働時間合計の数式をセット（J列 = 10列目）
-      sheet.getRange(targetTotalRow, 10).setFormula("=SUM(J" + startRow + ":J" + lastDataRow + ")");
-      // 合計欄の表示形式も「[h]:mm」（24時間を超えても合計できる形式）に設定
-      sheet.getRange(targetTotalRow, 10).setNumberFormat("[h]:mm");
+    // 稼働時間合計（J列=10列目）
+    sheet.getRange(targetTotalRow, 10).setFormula("=SUM(J" + startRow + ":J" + lastDataRow + ")");
+    sheet.getRange(targetTotalRow, 10).setNumberFormat("[h]:mm");
 
-      // 走行距離合計（O列=15）・電車通勤合計（P列=16）・ガソリン代合計（Q列=17）・燃料代合計（R列=18）・パーキング代合計（S列=19）
-      sheet.getRange(targetTotalRow, 15).setFormula("=SUM(O" + startRow + ":O" + lastDataRow + ")");
-      sheet.getRange(targetTotalRow, 16).setFormula("=SUM(P" + startRow + ":P" + lastDataRow + ")");
-      sheet.getRange(targetTotalRow, 17).setFormula("=SUM(Q" + startRow + ":Q" + lastDataRow + ")");
-      sheet.getRange(targetTotalRow, 18).setFormula("=SUM(R" + startRow + ":R" + lastDataRow + ")");
-      sheet.getRange(targetTotalRow, 19).setFormula("=SUM(S" + startRow + ":S" + lastDataRow + ")");
-    }
+    // 電車通勤合計（P列=16列目）・ガソリン代合計（Q列=17）・燃料代合計（R列=18）・パーキング代合計（S列=19）
+    sheet.getRange(targetTotalRow, 16).setFormula("=SUM(P" + startRow + ":P" + lastDataRow + ")");
+    sheet.getRange(targetTotalRow, 17).setFormula("=SUM(Q" + startRow + ":Q" + lastDataRow + ")");
+    sheet.getRange(targetTotalRow, 18).setFormula("=SUM(R" + startRow + ":R" + lastDataRow + ")");
+    sheet.getRange(targetTotalRow, 19).setFormula("=SUM(S" + startRow + ":S" + lastDataRow + ")");
   }
 
   Logger.log("    明細書き込み完了：type=" + type);
