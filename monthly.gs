@@ -167,13 +167,13 @@ function getMonthlyRecords(db, year, month) {
         distance:      row[cm["走行距離"]],
         trainCommute:       row[cm["電車通勤"]],
         memo:               row[cm["備考"]],
-        companyCardPayment: row[cm["会社クレカ払い"]] === "1",
+        companyCardPayment: ["1", 1, true].includes(row[cm["会社クレカ払い"]]),
         gasoline:           row[cm["ガソリン代"]],
-        gasolineNC:         row[cm["ガソリン代_チェック"]] === "1",
+        gasolineNC:         ["1", 1, true].includes(row[cm["ガソリン代_チェック"]]),
         fuel:               row[cm["燃料代"]],
-        fuelNC:             row[cm["燃料代_チェック"]] === "1",
+        fuelNC:             ["1", 1, true].includes(row[cm["燃料代_チェック"]]),
         parking:            row[cm["パーキング代"]],
-        parkingNC:          row[cm["パーキング代_チェック"]] === "1",
+        parkingNC:          ["1", 1, true].includes(row[cm["パーキング代_チェック"]]),
       });
     }
   }
@@ -597,19 +597,15 @@ function writeDetailRows(sheet, rows, type) {
     }
   });
 
-  // 運行管理表（kanri）の場合のみ、合計行（36行目固定）にSUM式を設定する
+  // 運行管理表（kanri）の場合のみ、合計行（37行目固定）にSUM式を設定する
+  // ※稼働時間合計はテンプレートに既存式があるためGASからは書き込まない
   if (type === "kanri" && rows.length > 0) {
     const lastDataRow = startRow + rows.length - 1;
-    // 合計行：36行目がラベル行、37行目が数値行（固定）
     const targetTotalRow = 37;
 
     Logger.log("    合計行を設定：" + targetTotalRow + "行目（データ " + startRow + "〜" + lastDataRow + "行）");
 
-    // 稼働時間合計（J列=10列目）
-    sheet.getRange(targetTotalRow, 10).setFormula("=SUM(J" + startRow + ":J" + lastDataRow + ")");
-    sheet.getRange(targetTotalRow, 10).setNumberFormat("[h]:mm");
-
-    // 電車通勤合計（P列=16列目）・ガソリン代合計（Q列=17）・燃料代合計（R列=18）・パーキング代合計（S列=19）
+    // 電車通勤合計（P列=16）・ガソリン代合計（Q列=17）・燃料代合計（R列=18）・パーキング代合計（S列=19）
     sheet.getRange(targetTotalRow, 16).setFormula("=SUM(P" + startRow + ":P" + lastDataRow + ")");
     sheet.getRange(targetTotalRow, 17).setFormula("=SUM(Q" + startRow + ":Q" + lastDataRow + ")");
     sheet.getRange(targetTotalRow, 18).setFormula("=SUM(R" + startRow + ":R" + lastDataRow + ")");
