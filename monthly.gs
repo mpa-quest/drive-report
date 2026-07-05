@@ -494,6 +494,10 @@ function writeDetailRows(sheet, rows, type) {
   const recordSheet = db.getSheetByName("運行記録");
   const displayValues = recordSheet.getDataRange().getDisplayValues();
 
+  // ヘッダー名→列インデックスマップをループ外で1回だけ取得（パフォーマンス対策）
+  const kanriCm = (type === "kanri") ? getColumnMapFromSheet(sheet) : {};
+  const dcm     = getColumnMapFromSheet(recordSheet); // 運行記録シートの列マップ（ループ外で取得）
+
   rows.forEach(function(r, idx) {
     const row = startRow + idx;
     
@@ -516,8 +520,7 @@ function writeDetailRows(sheet, rows, type) {
 
       const targetTimestamp = r.timestamp ? String(r.timestamp).trim() : "";
 
-      // 元のシートの行を特定し「見かけ上の時間・稼働時間」を取得する
-      const dcm = getColumnMapFromSheet(recordSheet); // 動的列マップ
+      // 元のシートの行を特定し「見かけ上の時間・稼働時間」を取得する（dcmはループ外で取得済み）
       let matched = false;
       let workingSerial = 0;
       for (let k = 1; k < displayValues.length; k++) {
@@ -573,39 +576,43 @@ function writeDetailRows(sheet, rows, type) {
       const parkingVal  = r.parkingNC  ? 0 : (parseFloat(r.parking)  || 0);
 
       // テンプレートのヘッダー名で動的に列マップを取得して書き込む（列順変更に対応）
-      const kanriCm = getColumnMapFromSheet(sheet);
-      function setKanri(colName, value) {
-        if (kanriCm[colName] === undefined) return;
-        const colIdx = kanriCm[colName] + 1; // 0-indexed → 1-indexed
-        sheet.getRange(row, colIdx).setValue(value);
-      }
+      // ヘッダー名で列位置を動的取得しつつ、書き込みは行単位でまとめて実行（高速化）
+      function getCol(name) { return kanriCm[name] !== undefined ? kanriCm[name] + 1 : -1; }
 
-      setKanri("日付",         displayDate);
-      setKanri("運行者",       r.staffName);
-      setKanri("車両",         r.vehicle);
-      setKanri("出発",         r.departure);
-      setKanri("行き先",       r.destination);
-      setKanri("到着",         r.arrival);
-      setKanri("出発時間",     dispDepartureTime);
-      setKanri("到着日",       displayArrivalDate);
-      setKanri("到着時間",     dispArrivalTime);
-      setKanri("利用者",       r.passenger);
-      setKanri("利用目的",     r.purpose);
-      setKanri("メーター走行前", r.meterBefore);
-      setKanri("メーター走行後", r.meterAfter);
-      setKanri("走行距離",     r.distance);
-      setKanri("電車通勤",     r.trainCommute);
-      setKanri("ガソリン代",   gasolineVal || "");
-      setKanri("燃料代",       fuelVal     || "");
-      setKanri("パーキング代", parkingVal  || "");
-      setKanri("備考",         r.memo);
+      // 書き込む列・値のペアを配列で構築
+      const writes = [
+        ["日付",         displayDate],
+        ["運行者",       r.staffName],
+        ["車両",         r.vehicle],
+        ["出発",         r.departure],
+        ["行き先",       r.destination],
+        ["到着",         r.arrival],
+        ["出発時間",     dispDepartureTime],
+        ["到着日",       displayArrivalDate],
+        ["到着時間",     dispArrivalTime],
+        ["稼働時間",     workingSerial],
+        ["利用者",       r.passenger],
+        ["利用目的",     r.purpose],
+        ["メーター走行前", r.meterBefore],
+        ["メーター走行後", r.meterAfter],
+        ["走行距離",     r.distance],
+        ["電車通勤",     r.trainCommute],
+        ["ガソリン代",   gasolineVal || ""],
+        ["燃料代",       fuelVal     || ""],
+        ["パーキング代", parkingVal  || ""],
+        ["備考",         r.memo],
+      ];
 
-      // 稼働時間は数値（シリアル値）で書き込み・表示形式を[h]:mmに設定
-      if (kanriCm["稼働時間"] !== undefined) {
-        const whColIdx = kanriCm["稼働時間"] + 1;
-        sheet.getRange(row, whColIdx).setValue(workingSerial);
-        sheet.getRange(row, whColIdx).setNumberFormat("[h]:mm");
-      }
+      // 列番号が存在するものだけセルに書き込む
+      writes.forEach(function(pair) {
+        const colIdx = getCol(pair[0]);
+        if (colIdx === -1) return;
+        sheet.getRange(row, colIdx).setValue(pair[1]);
+      });
+
+      // 稼働時間の表示形式を[h]:mmに設定
+      const whColIdx = getCol("稼働時間");
+      if (whColIdx !== -1) sheet.getRange(row, whColIdx).setNumberFormat("[h]:mm");
       
     } else {
       // お客様請求書・ドライバー請求書用
