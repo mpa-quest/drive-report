@@ -186,25 +186,85 @@ function getMonthlyRecords(db, year, month) {
 function getStaffMap(db) {
   const sheet = db.getSheetByName("スタッフマスタ");
   const data  = sheet.getDataRange().getValues();
+  const cm    = getColumnMapFromSheet(sheet); // ヘッダー名→列インデックス（0-indexed）
   const map   = {};
+
+  // ヘッダー名の揺れに対応するためのフォールバック付き取得ヘルパー
+  function col(row, names, fallbackIdx) {
+    for (let n = 0; n < names.length; n++) {
+      if (cm[names[n]] !== undefined) return row[cm[names[n]]];
+    }
+    return fallbackIdx !== undefined ? row[fallbackIdx] : undefined;
+  }
+
   for (let i = 1; i < data.length; i++) {
-    const staffId = data[i][1];
+    const row = data[i];
+    const staffId = col(row, ["スタッフID"], 1);
+    if (!staffId) continue;
+
+    // 会社マスタと同様、「例外」列に値があるスタッフは、給与ロジック未確定のためとりあえずスキップ
+    const exceptionNote = col(row, ["例外"]);
+    if (exceptionNote) {
+      Logger.log("  ⚠️ 例外ルールありのためスキップ（要個別対応）：" + staffId + "　内容：" + exceptionNote);
+      continue;
+    }
+
+    const companyIdsRaw = col(row, ["担当会社"], 3);
+
     map[staffId] = {
-      lineUserId:  data[i][0],
-      staffId:     data[i][1],
-      staffName:   data[i][2],
-      companyIds:  data[i][3] ? String(data[i][3]).split(",").map(s => s.trim()) : [],
-      email:       data[i][4],
-      regNumber:   data[i][5],
-      zip:         data[i][6],
-      address:     data[i][7],
-      phone:       data[i][8],
-      bankName:    data[i][9],
-      branchName:  data[i][10],
-      accountNum:  data[i][11],
+      lineUserId:  col(row, ["LINEユーザーID"], 0),
+      staffId:     staffId,
+      staffName:   col(row, ["名前"], 2),
+      companyIds:  companyIdsRaw ? String(companyIdsRaw).split(",").map(s => s.trim()) : [],
+      email:       col(row, ["メール"], 4),
+      regNumber:   col(row, ["登録番号"], 5),
+      zip:         col(row, ["郵便番号"], 6),
+      address:     col(row, ["住所"], 7),
+      phone:       col(row, ["電話番号"], 8),
+      bankName:    col(row, ["銀行名"], 9),
+      branchName:  col(row, ["支店名"], 10),
+      accountNum:  col(row, ["口座番号"], 11),
+      basicPay:    Number(col(row, ["基本給"])) || 0,
+      payUnit:     col(row, ["単位"]),        // "1時間" 等の時間単位、または "月額固定"
+      overRate:    Number(col(row, ["超過単価"])) || 0,
     };
   }
   return map;
+}
+
+// =====================
+// スタッフの月給を計算
+//   ・単位が「月額固定」→ 実稼働時間に関係なく基本給そのまま支給（超過なし）
+//   ・単位が「◯時間」→ その時間までは基本給、超えた分は超過単価×超過時間を加算
+//     （超過単価が空欄の場合は会社マスタと同様、単価（基本給÷基本時間）×実稼働時間の実額制）
+// ※ まだ請求書明細への書き込みには接続していません
+// =====================
+function calculateStaffFee_(staff, totalWorkedHours) {
+  if (!staff) return null;
+
+  const unit = String(staff.payUnit || "").trim();
+  const basicPay = staff.basicPay || 0;
+
+  // 月額固定 → 実稼働時間に関係なく基本給そのまま（超過なし）
+  if (unit === "月額固定") {
+    return basicPay;
+  }
+
+  const basicHours = parseHoursToNumber_(unit);
+  if (!basicHours) {
+    Logger.log("  ⚠️ 単位から基本時間を判定できないため給与計算不可：" + staff.staffId);
+    return null;
+  }
+
+  // 超過単価が空欄 → 単価×実稼働時間のみ（超過という概念自体がない）
+  if (!staff.overRate) {
+    const unitPrice = basicPay / basicHours;
+    return unitPrice * totalWorkedHours;
+  }
+
+  // 超過単価が設定されている場合：基本時間を超えた分だけ超過単価を加算
+  const overHours = Math.max(0, totalWorkedHours - basicHours);
+  return basicPay + overHours * staff.overRate;
 }
 
 // =====================
