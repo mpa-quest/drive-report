@@ -599,7 +599,7 @@ function createGmailDrafts(companyMap, companyFolder, kanriFolder, targetLabel) 
       Logger.log("  ⚠️ 運行管理表PDFが見つからないため請求書のみ添付：" + kanriName);
     }
 
-    const subject = "【ご請求】" + targetLabel + "分　株式会社エグゼクティブサポート";
+    const subject = "【ご請求】" + targetLabel + "分　" + company.companyName + " 御中";
 
     const body =
       (company.contactName || company.companyName) + " 様\n\n" +
