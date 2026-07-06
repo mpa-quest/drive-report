@@ -289,12 +289,11 @@ function getCompanyMap(db) {
     const companyId = col(row, ["会社ID"], 0);
     if (!companyId) continue;
 
-    // ①「例外」列に値がある会社は、料金ロジック未確定のためとりあえずスキップ
-    //    （運行管理表・請求書・Gmail下書きいずれも今回は生成対象外）
+    // ①「例外」列に値がある会社は、料金ロジック未確定のためお客様請求書の生成は見送るが、
+    //    運行管理表（社内向け）は通常通り作成するため、マップからは除外せずフラグとして保持する
     const exceptionNote = col(row, ["例外"]);
     if (exceptionNote) {
-      Logger.log("  ⚠️ 例外ルールありのためスキップ（要個別対応）：" + companyId + "　内容：" + exceptionNote);
-      continue;
+      Logger.log("  ⚠️ 例外ルールあり（要個別対応・請求書は生成しません）：" + companyId + "　内容：" + exceptionNote);
     }
 
     map[companyId] = {
@@ -307,6 +306,7 @@ function getCompanyMap(db) {
       basicFee:    Number(col(row, ["基本料金"])) || 0,
       basicHours:  col(row, ["基本時間"]),
       overRate:    Number(col(row, ["超過単価"])) || 0,
+      exception:   exceptionNote || "",     // 値があれば請求書生成をスキップする対象
     };
   }
   return map;
@@ -517,7 +517,12 @@ function generateCompanyDocs(records, companyMap, targetLabel, targetYear, targe
     savePdfSingleSheet(kanriSS, kanriCopy, kanriName, kanriFolder, "運行管理表");
     Logger.log("    運行管理表 生成完了：" + kanriName);
 
-    // お客様請求書
+    // お客様請求書（①「例外」ありの会社は、料金ロジック未確定のため請求書の生成はスキップ）
+    if (company.exception) {
+      Logger.log("    ⚠️ 例外ルールありのためお客様請求書はスキップ：" + companyId + "_" + company.companyName + "（" + company.exception + "）");
+      return;
+    }
+
     const invoiceName = "【請求書】" + companyId + "_" + company.companyName + "_" + targetLabel;
     Logger.log("    お客様請求書 生成中：" + invoiceName);
     const invoiceCopy  = DriveApp.getFileById(templateId).makeCopy(invoiceName, companyFolder);
