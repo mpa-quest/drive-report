@@ -481,6 +481,13 @@ function toTaxExcluded_(taxIncludedAmount) {
   return taxIncludedAmount - tax;
 }
 
+// toTaxExcluded_ と同じ計算式で消費税額だけを取り出す（合計金額が税込入力の原本と1円もズレないようにするため）
+// ※ 集計時にfloor(税抜合計×10%)で消費税を再計算すると、変換時の消費税と丸めの関係で1円ズレることがあるため、
+//    税込→税抜に変換した項目は、変換時に確定した消費税額をそのまま合計に使う
+function taxPortionOfIncluded_(taxIncludedAmount) {
+  return Math.floor(taxIncludedAmount / 11);
+}
+
 // "2026年07月" のような対象月ラベルから、その月の1日を "yyyy/MM/dd" 文字列で返す
 function getFirstDayOfMonthStr_(targetLabel) {
   const m = String(targetLabel || "").match(/(\d+)年(\d+)月/);
@@ -521,7 +528,7 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   // ② 交通費（電車通勤）：お客様への請求不要チェックの概念はないため常に計上
   const trainTotal = rows.reduce(function(sum, r) { return sum + (parseFloat(r.trainCommute) || 0); }, 0);
   if (trainTotal > 0) {
-    baseItems.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: toTaxExcluded_(trainTotal) });
+    baseItems.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: toTaxExcluded_(trainTotal), taxAmountOverride: taxPortionOfIncluded_(trainTotal) });
   }
 
   // ③ 立替費用（ガソリン代・燃料代・パーキング代）：お客様への請求不要チェックは除外
@@ -534,7 +541,7 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   ["ガソリン代", "燃料代", "パーキング代"].forEach(function(label) {
     const taxIncluded = expenseTotals[label];
     if (taxIncluded > 0) {
-      baseItems.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+      baseItems.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded), taxAmountOverride: taxPortionOfIncluded_(taxIncluded) });
     }
   });
 
@@ -548,9 +555,17 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
 
   if (isConsolidated) {
     // 一本化パターン：運行代・交通費・立替費用・時間超過分をすべて合算して1行にまとめる
-    const total = baseItems.reduce(function(sum, it) { return sum + (it.qty || 0) * (it.unitPrice || 0); }, 0);
+    // ※ 各明細の消費税額（taxAmountOverride、無ければ税抜額×10%を切り捨て）も合算し、
+    //    合算後の1行にそのまま引き継ぐ（集計時の再計算による1円ズレを防ぐため）
+    let total = 0;
+    let totalTaxOverride = 0;
+    baseItems.forEach(function(it) {
+      const amount = (it.qty || 0) * (it.unitPrice || 0);
+      total += amount;
+      totalTaxOverride += (it.taxAmountOverride !== undefined) ? it.taxAmountOverride : Math.floor(amount * 0.1);
+    });
     if (total > 0 || applyBasicFee) {
-      items.push({ date: "", content: "貴社運行管理請負費用", qty: 1, unit: "式", unitPrice: total });
+      items.push({ date: "", content: "貴社運行管理請負費用", qty: 1, unit: "式", unitPrice: total, taxAmountOverride: totalTaxOverride });
     }
   } else {
     baseItems.forEach(function(it) { items.push(it); });
@@ -610,7 +625,7 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
     return sum + (r.companyCardPayment ? 0 : (parseFloat(r.trainCommute) || 0));
   }, 0);
   if (trainTotal > 0) {
-    items.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: isTaxable ? toTaxExcluded_(trainTotal) : trainTotal });
+    items.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: isTaxable ? toTaxExcluded_(trainTotal) : trainTotal, taxAmountOverride: isTaxable ? taxPortionOfIncluded_(trainTotal) : undefined });
   }
 
   // ③ 立替費用（ガソリン代・燃料代・パーキング代）：会社クレカ払いの場合は対象外
@@ -625,7 +640,7 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   ["ガソリン代", "燃料代", "パーキング代"].forEach(function(label) {
     const taxIncluded = expenseTotals[label];
     if (taxIncluded > 0) {
-      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: isTaxable ? toTaxExcluded_(taxIncluded) : taxIncluded });
+      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: isTaxable ? toTaxExcluded_(taxIncluded) : taxIncluded, taxAmountOverride: isTaxable ? taxPortionOfIncluded_(taxIncluded) : undefined });
     }
   });
 
@@ -671,10 +686,13 @@ function writeInvoiceLineItems_(sheet, items, startRow, dateStr) {
 // D39：8%対象の消費税／F39：8%対象の金額（税抜）
 // Q36：小計／Q37：消費税／Q38：合計
 // B11：ご請求金額（税込）＝合計と同じ値を直接書き込む
-function writeInvoiceSummary_(sheet, items) {
+// startRow：明細の書き込み開始行（税込原本とのズレ調整で、最後の課税明細のQ列を直接上書きするために必要）
+function writeInvoiceSummary_(sheet, items, startRow) {
+  const amounts = items.map(function(item) { return (item.qty || 0) * (Math.round(item.unitPrice) || 0); });
+
   let net10 = 0, net8 = 0, netOther = 0;
-  items.forEach(function(item) {
-    const amount = (item.qty || 0) * (Math.round(item.unitPrice) || 0);
+  items.forEach(function(item, i) {
+    const amount = amounts[i];
     if (item.taxRate === 0.1) {
       net10 += amount;
     } else if (item.taxRate === 0.08) {
@@ -684,11 +702,43 @@ function writeInvoiceSummary_(sheet, items) {
     }
   });
 
+  // インボイス制度のルールに則り、消費税の端数処理は「税率ごとに請求書1枚につき1回」だけ行う
   const tax10 = Math.floor(net10 * 0.10);
   const tax8  = Math.floor(net8  * 0.08);
-  const taxTotal   = tax10 + tax8;
-  const subtotal   = net10 + net8 + netOther;
-  const grandTotal = subtotal + taxTotal;
+  const taxTotal = tax10 + tax8;
+
+  // 税込で入力された項目の原本金額（税込→税抜変換時に確定した消費税＝taxAmountOverrideを使う）と、
+  // 上記の「税率ごとに1回だけ」ルールで出した合計との差額を求める
+  // ※ 通常は税込⇔税抜の変換誤差でごくわずか（±1円程度）に収まる想定
+  let idealGrandTotal = 0;
+  items.forEach(function(item, i) {
+    const amount = amounts[i];
+    if (item.taxAmountOverride !== undefined) {
+      idealGrandTotal += amount + item.taxAmountOverride;
+    } else if (item.taxRate === 0.1 || item.taxRate === 0.08) {
+      idealGrandTotal += amount + Math.floor(amount * item.taxRate);
+    } else {
+      idealGrandTotal += amount;
+    }
+  });
+
+  let subtotal   = net10 + net8 + netOther;
+  let grandTotal = subtotal + taxTotal;
+  const diff = idealGrandTotal - grandTotal;
+
+  // ズレがある場合、最後の課税対象明細1行のQ列（金額）だけを直接上書きして吸収する
+  // （L×Nの数式ではなく、その行だけ確定値を書き込む。他の行・単価は一切変更しない）
+  if (diff !== 0 && startRow !== undefined) {
+    let targetIdx = -1;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].taxRate === 0.1 || items[i].taxRate === 0.08) { targetIdx = i; break; }
+    }
+    if (targetIdx !== -1) {
+      sheet.getRange(startRow + targetIdx, 17).setValue(amounts[targetIdx] + diff); // Q列を確定値で上書き
+      subtotal   += diff;
+      grandTotal += diff;
+    }
+  }
 
   sheet.getRange("F38").setValue(net10);
   sheet.getRange("F39").setValue(net8);
@@ -1027,7 +1077,7 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
       : buildStaffInvoiceLineItems_(masterRecord, rows, dcm, displayValues);
     const dateStr = getFirstDayOfMonthStr_(targetLabel); // すべて対象月の1日
     writeInvoiceLineItems_(sheet, items, startRow, dateStr);
-    writeInvoiceSummary_(sheet, items); // 小計・消費税・合計はテンプレート数式を使わずGAS側で直接計算
+    writeInvoiceSummary_(sheet, items, startRow); // 小計・消費税・合計はテンプレート数式を使わずGAS側で直接計算
     Logger.log("    明細書き込み完了：type=" + type + "、" + items.length + " 件");
     return;
   }
