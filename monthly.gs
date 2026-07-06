@@ -108,7 +108,7 @@ function runMonthlyProcess() {
     // ② 運行管理表・お客様請求書を生成
     Logger.log("--- ② 運行管理表・お客様請求書の生成開始 ---");
     SpreadsheetApp.getActiveSpreadsheet().toast("② 運行管理表・お客様請求書を生成中...", "🚗 月初処理", 5);
-    generateCompanyDocs(records, companyMap, targetLabel, paymentDate, TEMPLATE_ID, kanriMonthFolder, companyMonthFolder);
+    generateCompanyDocs(records, companyMap, targetLabel, targetYear, targetMonth, TEMPLATE_ID, kanriMonthFolder, companyMonthFolder);
     Logger.log("② 運行管理表・お客様請求書の生成完了");
 
     // ③ Gmailの下書きを作成（お客様請求書 ＆ 運行管理表 を両方添付）
@@ -213,17 +213,121 @@ function getStaffMap(db) {
 function getCompanyMap(db) {
   const sheet = db.getSheetByName("会社マスタ");
   const data  = sheet.getDataRange().getValues();
+  const cm    = getColumnMapFromSheet(sheet); // ヘッダー名→列インデックス（0-indexed）
   const map   = {};
+
+  // ヘッダー名の揺れに対応するためのフォールバック付き取得ヘルパー
+  function col(row, names, fallbackIdx) {
+    for (let n = 0; n < names.length; n++) {
+      if (cm[names[n]] !== undefined) return row[cm[names[n]]];
+    }
+    return fallbackIdx !== undefined ? row[fallbackIdx] : undefined;
+  }
+
   for (let i = 1; i < data.length; i++) {
-    const companyId = data[i][0];
+    const row = data[i];
+    const companyId = col(row, ["会社ID"], 0);
+    if (!companyId) continue;
+
+    // ①「例外」列に値がある会社は、料金ロジック未確定のためとりあえずスキップ
+    //    （運行管理表・請求書・Gmail下書きいずれも今回は生成対象外）
+    const exceptionNote = col(row, ["例外"]);
+    if (exceptionNote) {
+      Logger.log("  ⚠️ 例外ルールありのためスキップ（要個別対応）：" + companyId + "　内容：" + exceptionNote);
+      continue;
+    }
+
     map[companyId] = {
-      companyId:   data[i][0],
-      companyName: data[i][1],
-      email:       data[i][2],
-      contactName: data[i][3],
+      companyId:   companyId,
+      companyName: col(row, ["会社名"], 1),
+      email:       col(row, ["アドレス", "メールアドレス", "メール"], 2),
+      contactName: col(row, ["担当者名"], 3),
+      closingDay:  col(row, ["締日"]),
+      category:    col(row, ["分類"]),      // "専属" or "スポット"
+      basicFee:    Number(col(row, ["基本料金"])) || 0,
+      basicHours:  col(row, ["基本時間"]),
+      overRate:    Number(col(row, ["超過単価"])) || 0,
     };
   }
   return map;
+}
+
+// =====================
+// ③ 基本料金が発生するかどうかを判定
+//   ・専属：当月の運行実績が0件でも基本料金は発生する
+//   ・スポット：当月1日でも運行があれば、基本時間未達でも基本料金は発生する
+// =====================
+function shouldApplyBasicFee_(company, companyRecordsThisMonth) {
+  if (!company) return false;
+  const hasAnyRecord = !!(companyRecordsThisMonth && companyRecordsThisMonth.length > 0);
+
+  if (company.category === "専属") {
+    return true;
+  }
+  if (company.category === "スポット") {
+    return hasAnyRecord;
+  }
+  Logger.log("  ⚠️ 分類（専属／スポット）が未設定のため基本料金の判定不可：" + company.companyId);
+  return false;
+}
+
+// =====================
+// 会社ごとの月額料金を計算
+//   ・超過単価が空欄の場合：超過という区分をせず、単価（基本料金÷基本時間）×実際の稼働時間の実額制
+//   ・超過単価が設定されている場合：基本時間までは基本料金、超えた時間分は超過単価×超過時間を加算
+//     （③のルールにより、専属は当月実績0件でも基本料金は発生、スポットは1日でも運行があれば基本時間未達でも基本料金発生）
+// ※ まだ請求書明細への書き込みには接続していません（金額の書式・消費税計算が未確定のため）
+// =====================
+function calculateCompanyFee_(company, totalWorkedHours) {
+  if (!company) return null;
+
+  const basicFee   = company.basicFee || 0;
+  const basicHours = parseHoursToNumber_(company.basicHours);
+
+  // 超過単価が空欄 → 単価×実稼働時間のみ（超過という概念自体がない）
+  if (!company.overRate) {
+    if (!basicHours) {
+      Logger.log("  ⚠️ 基本時間が未設定のため単価計算不可：" + company.companyId);
+      return null;
+    }
+    const unitPrice = basicFee / basicHours;
+    return unitPrice * totalWorkedHours;
+  }
+
+  // 超過単価が設定されている場合：基本時間を超えた分だけ超過単価を加算
+  if (!basicHours) {
+    Logger.log("  ⚠️ 基本時間が未設定のため超過計算不可（基本料金のみ）：" + company.companyId);
+    return basicFee;
+  }
+  const overHours = Math.max(0, totalWorkedHours - basicHours);
+  return basicFee + overHours * company.overRate;
+}
+
+// "9時間" "180時間" のような表記から数値（時間）を取り出す
+function parseHoursToNumber_(hoursText) {
+  if (hoursText === undefined || hoursText === null || hoursText === "") return null;
+  if (typeof hoursText === "number") return hoursText;
+  const m = String(hoursText).match(/(\d+(\.\d+)?)/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+// =====================
+// 会社マスタの「締日」（支払日パターン："20日" or "月末"）に応じて支払期日を算出
+//   ・"月末" → 翌月末日
+//   ・それ以外（"20日"含む・未設定含む） → 翌月20日（デフォルト）
+// =====================
+function calculatePaymentDate_(targetYear, targetMonth, closingDayType) {
+  const paymentYear  = targetMonth === 12 ? targetYear + 1 : targetYear;
+  const paymentMonth = targetMonth === 12 ? 1 : targetMonth + 1;
+
+  const type = String(closingDayType || "").trim();
+  if (type === "月末") {
+    // new Date(year, month, 0) は「month月の0日目」＝「month-1月の末日」を返す仕様を利用し、
+    // paymentMonthの月末日を取得する
+    const lastDay = new Date(paymentYear, paymentMonth, 0).getDate();
+    return paymentYear + "年" + String(paymentMonth).padStart(2, "0") + "月" + lastDay + "日";
+  }
+  return paymentYear + "年" + String(paymentMonth).padStart(2, "0") + "月20日";
 }
 
 // =====================
@@ -287,7 +391,7 @@ function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, temp
 // =====================
 // ② 運行管理表・お客様請求書を生成
 // =====================
-function generateCompanyDocs(records, companyMap, targetLabel, paymentDate, templateId, kanriFolder, companyFolder) {
+function generateCompanyDocs(records, companyMap, targetLabel, targetYear, targetMonth, templateId, kanriFolder, companyFolder) {
   // 発行日（マクロ実行日）・請求番号用月キー（YYYYMM形式）
   const now             = new Date();
   const issueDate       = Utilities.formatDate(now, "Asia/Tokyo", "yyyy年MM月dd日");
@@ -300,6 +404,16 @@ function generateCompanyDocs(records, companyMap, targetLabel, paymentDate, temp
     grouped[cid].push(r);
   });
 
+  // ③「専属」会社は当月の運行実績が0件でも基本料金が発生するため、
+  //    運行記録がなくても請求対象に含める（明細0件の請求書を生成）
+  Object.keys(companyMap).forEach(function(companyId) {
+    const company = companyMap[companyId];
+    if (company.category === "専属" && !grouped[companyId]) {
+      grouped[companyId] = [];
+      Logger.log("  専属契約かつ当月運行実績0件のため、明細0件で請求対象に追加：" + companyId + "_" + company.companyName);
+    }
+  });
+
   const companyIds = Object.keys(grouped);
   Logger.log("対象会社数：" + companyIds.length + " 社");
 
@@ -309,6 +423,10 @@ function generateCompanyDocs(records, companyMap, targetLabel, paymentDate, temp
       Logger.log("⚠️ 会社マスタに未登録の会社IDをスキップ：" + companyId);
       return;
     }
+
+    // ③ 基本料金の発生有無を判定（金額の書き込み自体は未実装のためログ出力のみ）
+    const applyBasicFee = shouldApplyBasicFee_(company, grouped[companyId]);
+    Logger.log("  基本料金判定：" + companyId + "_" + company.companyName + "（分類：" + (company.category || "未設定") + "）→ " + (applyBasicFee ? "発生する" : "発生しない"));
     // 日付・出発時間の昇順でソート
     const rows = grouped[companyId].slice().sort(function(a, b) {
       const dateA = a.date ? new Date(a.date).getTime() : 0;
@@ -350,8 +468,9 @@ function generateCompanyDocs(records, companyMap, targetLabel, paymentDate, temp
     replaceInSheet(invoiceSheet, "{{発行日}}",   issueDate);
     replaceInSheet(invoiceSheet, "{{請求番号}}", companyId + "_" + invoiceMonthKey + "_00");
 
-    // 振込期日（C16固定）
-    invoiceSheet.getRange("C16").setValue(paymentDate);
+    // 振込期日（会社マスタの「締日」＝支払日パターンに応じて算出：「20日」or「月末」）
+    const companyPaymentDate = calculatePaymentDate_(targetYear, targetMonth, company.closingDay);
+    invoiceSheet.getRange("C16").setValue(companyPaymentDate);
 
     writeDetailRows(invoiceSheet, rows, "company");
     savePdfSingleSheet(invoiceSS, invoiceCopy, invoiceName, companyFolder, "お客様請求書");
@@ -843,7 +962,7 @@ function runStep2() {
     const companyFolder = getOrCreateFolder(props.getProperty("COMPANY_FOLDER_ID"), targetLabel);
     clearFolderFiles_(kanriFolder,   "運行管理表");
     clearFolderFiles_(companyFolder, "お客様請求書");
-    generateCompanyDocs(records, companyMap, targetLabel, paymentDate, props.getProperty("TEMPLATE_SPREADSHEET_ID"), kanriFolder, companyFolder);
+    generateCompanyDocs(records, companyMap, targetLabel, ym.year, ym.month, props.getProperty("TEMPLATE_SPREADSHEET_ID"), kanriFolder, companyFolder);
 
     Logger.log("=== ② 運行管理表・お客様請求書生成完了：" + targetLabel + " ===");
     SpreadsheetApp.getUi().alert("✅ 処理が完了しました。\n\n② 運行管理表・お客様請求書の生成が完了しました。\n対象月：" + targetLabel);
