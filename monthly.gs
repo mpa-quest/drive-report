@@ -472,7 +472,7 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
     }
   }
 
-  // 立替費用（ガソリン代・燃料代・パーキング代・電車通勤）：お客様への請求不要チェックは除外
+  // 立替費用（ガソリン代・燃料代・パーキング代・交通費(電車通勤)）：お客様への請求不要チェックは除外
   const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0, "電車通勤": 0 };
   rows.forEach(function(r) {
     if (!r.gasolineNC) expenseTotals["ガソリン代"]   += parseFloat(r.gasoline)      || 0;
@@ -480,10 +480,12 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
     if (!r.parkingNC)  expenseTotals["パーキング代"] += parseFloat(r.parking)       || 0;
     expenseTotals["電車通勤"] += parseFloat(r.trainCommute) || 0;
   });
-  Object.keys(expenseTotals).forEach(function(label) {
-    const taxIncluded = expenseTotals[label];
+  // 請求書上の表示名（電車通勤 → 交通費）
+  const expenseLabels = { "ガソリン代": "ガソリン代", "燃料代": "燃料代", "パーキング代": "パーキング代", "電車通勤": "交通費" };
+  Object.keys(expenseTotals).forEach(function(key) {
+    const taxIncluded = expenseTotals[key];
     if (taxIncluded > 0) {
-      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+      items.push({ date: "", content: expenseLabels[key], qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
     }
   });
 
@@ -531,17 +533,19 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
     expenseTotals["パーキング代"] += parseFloat(r.parking)       || 0;
     expenseTotals["電車通勤"]     += parseFloat(r.trainCommute) || 0;
   });
-  Object.keys(expenseTotals).forEach(function(label) {
-    const taxIncluded = expenseTotals[label];
+  // 請求書上の表示名（電車通勤 → 交通費）
+  const expenseLabels = { "ガソリン代": "ガソリン代", "燃料代": "燃料代", "パーキング代": "パーキング代", "電車通勤": "交通費" };
+  Object.keys(expenseTotals).forEach(function(key) {
+    const taxIncluded = expenseTotals[key];
     if (taxIncluded > 0) {
-      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+      items.push({ date: "", content: expenseLabels[key], qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
     }
   });
 
   // 登録番号（インボイス発行事業者番号）がある場合のみ課税対象（10%）。
-  // 登録番号が空欄＝免税事業者扱いのため、税率は設定しない（消費税0円、小計＝合計になる）
+  // 登録番号が空欄＝免税事業者扱いのため、税率は0%にする（消費税0円、小計＝合計になる）
   const isTaxable = !!staff.regNumber;
-  items.forEach(function(it) { it.taxRate = isTaxable ? 0.1 : ""; });
+  items.forEach(function(it) { it.taxRate = isTaxable ? 0.1 : 0; });
 
   return items;
 }
