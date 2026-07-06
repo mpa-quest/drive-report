@@ -363,6 +363,13 @@ function calculateCompanyFee_(company, totalWorkedHours) {
   return basicFee + overHours * company.overRate;
 }
 
+// "苗字　名前"（全角スペース区切り）から苗字だけを抽出する。全角スペースが無ければ全体をそのまま返す
+function extractSurname_(fullName) {
+  if (!fullName) return fullName;
+  const parts = String(fullName).split("　");
+  return parts[0];
+}
+
 // "9時間" "180時間" のような表記から数値（時間）を取り出す
 function parseHoursToNumber_(hoursText) {
   if (hoursText === undefined || hoursText === null || hoursText === "") return null;
@@ -1037,7 +1044,7 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
       // 書き込む列・値のペアを配列で構築
       const writes = [
         ["日付",         displayDate],
-        ["運行者",       r.staffName],
+        ["運行者",       extractSurname_(r.staffName)],
         ["車両",         r.vehicle],
         ["出発",         r.departure],
         ["行き先",       r.destination],
