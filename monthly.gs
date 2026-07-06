@@ -183,6 +183,18 @@ function getMonthlyRecords(db, year, month) {
 // =====================
 // スタッフマスタをマップで取得
 // =====================
+// =====================
+// 請求パターン名（マスタの「請求パターン」列に入れる値）を1箇所で管理
+// 新しい例外パターンを実装する際は、ここに追記して各マスタ列に対応する値を入れる
+//   ・会社・スタッフで同じ内容の割増ロジックは、同じパターン名を使い回す
+// =====================
+const BILLING_PATTERN = {
+  CONSOLIDATED: "一本化",   // 会社のみ：運行代・交通費・立替費用・時間超過分を1行「貴社運行管理請負費用」にまとめる
+  HOLIDAY_A:    "休日加算A", // 会社・スタッフ共通：水・土・日の記録日数×1万円（税抜）を別行加算
+};
+const COMPANY_BILLING_PATTERNS = [BILLING_PATTERN.CONSOLIDATED, BILLING_PATTERN.HOLIDAY_A];
+const STAFF_BILLING_PATTERNS   = [BILLING_PATTERN.HOLIDAY_A];
+
 function getStaffMap(db) {
   const sheet = db.getSheetByName("スタッフマスタ");
   const data  = sheet.getDataRange().getValues();
@@ -203,8 +215,11 @@ function getStaffMap(db) {
     if (!staffId) continue;
 
     // 会社マスタと同様、「例外」列に値があるスタッフは、給与ロジック未確定のためとりあえずスキップ
-    const exceptionNote = col(row, ["例外"]);
-    if (exceptionNote) {
+    // ただし「請求パターン」列に実装済みパターン（STAFF_BILLING_PATTERNS）が入っている場合はスキップせず特殊ロジックを適用
+    const exceptionNote  = col(row, ["例外"]);
+    const billingPattern = String(col(row, ["請求パターン"]) || "").trim();
+    const isImplementedStaffPattern = STAFF_BILLING_PATTERNS.indexOf(billingPattern) !== -1;
+    if (exceptionNote && !isImplementedStaffPattern) {
       Logger.log("  ⚠️ 例外ルールありのためスキップ（要個別対応）：" + staffId + "　内容：" + exceptionNote);
       continue;
     }
@@ -227,6 +242,7 @@ function getStaffMap(db) {
       basicPay:    Number(col(row, ["基本給"])) || 0,
       payUnit:     col(row, ["単位"]),        // "1時間" 等の時間単位、または "月額固定"
       overRate:    Number(col(row, ["超過単価"])) || 0,
+      billingPattern: billingPattern,
     };
   }
   return map;
@@ -296,6 +312,11 @@ function getCompanyMap(db) {
       Logger.log("  ⚠️ 例外ルールあり（要個別対応・請求書は生成しません）：" + companyId + "　内容：" + exceptionNote);
     }
 
+    // 「請求パターン」列：例外の中でも実装済みの特殊料金パターンを示す
+    //   BILLING_PATTERN.CONSOLIDATED　→ 運行代・交通費・立替費用・時間超過分を1行「貴社運行管理請負費用」にまとめる
+    //   BILLING_PATTERN.HOLIDAY_A     → 水・土・日に運行があった日数×1万円（税抜）を「休日運行費」として別行加算
+    const billingPattern = String(col(row, ["請求パターン"]) || "").trim();
+
     map[companyId] = {
       companyId:   companyId,
       companyName: col(row, ["会社名"], 1),
@@ -306,7 +327,8 @@ function getCompanyMap(db) {
       basicFee:    Number(col(row, ["基本料金"])) || 0,
       basicHours:  col(row, ["基本時間"]),
       overRate:    Number(col(row, ["超過単価"])) || 0,
-      exception:   exceptionNote || "",     // 値があれば請求書生成をスキップする対象
+      exception:   exceptionNote || "",     // 値があり、かつ請求パターンが未実装のものは請求書生成をスキップ
+      billingPattern: billingPattern,
     };
   }
   return map;
@@ -361,6 +383,23 @@ function calculateCompanyFee_(company, totalWorkedHours) {
   }
   const overHours = Math.max(0, totalWorkedHours - basicHours);
   return basicFee + overHours * company.overRate;
+}
+
+// 対象レコード群の中から「水・土・日」に運行/出勤があったユニークな日数をカウントする
+// ※ 同じ日に複数レコードがあっても1日としてカウント（二重計上しない）
+function countHolidayDates_(rows) {
+  const seen = {};
+  (rows || []).forEach(function(r) {
+    if (!r.date) return;
+    const d = (r.date instanceof Date) ? r.date : new Date(r.date);
+    if (isNaN(d.getTime())) return;
+    const dow = d.getDay(); // 0:日 3:水 6:土
+    if (dow === 0 || dow === 3 || dow === 6) {
+      const key = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy/MM/dd");
+      seen[key] = true;
+    }
+  });
+  return Object.keys(seen).length;
 }
 
 // "苗字　名前"（全角スペース区切り）から苗字だけを抽出する。全角スペースが無ければ全体をそのまま返す
@@ -462,21 +501,27 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   const basicHours    = parseHoursToNumber_(company.basicHours);
   const totalHours    = getTotalWorkedHours_(rows, dcm, displayValues);
   const hasOverRate   = !!company.overRate;
+  const pattern       = String(company.billingPattern || "").trim();
+  const isConsolidated = pattern === BILLING_PATTERN.CONSOLIDATED; // 会社：1行にまとめる
+  const isHolidayAdd   = pattern === BILLING_PATTERN.HOLIDAY_A;    // 会社：休日運行費を別行加算
+
+  // 統合パターンの場合は明細を一旦別配列に貯めて、最後に合算した1行に差し替える
+  const baseItems = [];
 
   // ① 運行代（基本料金 or 超過単価空欄時の実額制）
   if (!hasOverRate) {
     // 超過単価が空欄 → 単価（基本料金÷基本時間）×実稼働時間の実額制（超過という概念なし）
     if (applyBasicFee && basicHours) {
-      items.push({ date: "", content: "運行管理費", qty: totalHours, unit: "時間", unitPrice: company.basicFee / basicHours });
+      baseItems.push({ date: "", content: "運行管理費", qty: totalHours, unit: "時間", unitPrice: company.basicFee / basicHours });
     }
   } else if (applyBasicFee) {
-    items.push({ date: "", content: "運行管理費", qty: 1, unit: "式", unitPrice: company.basicFee });
+    baseItems.push({ date: "", content: "運行管理費", qty: 1, unit: "式", unitPrice: company.basicFee });
   }
 
   // ② 交通費（電車通勤）：お客様への請求不要チェックの概念はないため常に計上
   const trainTotal = rows.reduce(function(sum, r) { return sum + (parseFloat(r.trainCommute) || 0); }, 0);
   if (trainTotal > 0) {
-    items.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: toTaxExcluded_(trainTotal) });
+    baseItems.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: toTaxExcluded_(trainTotal) });
   }
 
   // ③ 立替費用（ガソリン代・燃料代・パーキング代）：お客様への請求不要チェックは除外
@@ -489,7 +534,7 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   ["ガソリン代", "燃料代", "パーキング代"].forEach(function(label) {
     const taxIncluded = expenseTotals[label];
     if (taxIncluded > 0) {
-      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+      baseItems.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
     }
   });
 
@@ -497,7 +542,25 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   if (hasOverRate && basicHours) {
     const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
-      items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: company.overRate });
+      baseItems.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: company.overRate });
+    }
+  }
+
+  if (isConsolidated) {
+    // 一本化パターン：運行代・交通費・立替費用・時間超過分をすべて合算して1行にまとめる
+    const total = baseItems.reduce(function(sum, it) { return sum + (it.qty || 0) * (it.unitPrice || 0); }, 0);
+    if (total > 0 || applyBasicFee) {
+      items.push({ date: "", content: "貴社運行管理請負費用", qty: 1, unit: "式", unitPrice: total });
+    }
+  } else {
+    baseItems.forEach(function(it) { items.push(it); });
+  }
+
+  // 休日加算Aパターン：水・土・日に運行があった日数×1万円（税抜）を「休日運行費」として別行加算
+  if (isHolidayAdd) {
+    const holidayDays = countHolidayDates_(rows);
+    if (holidayDays > 0) {
+      items.push({ date: "", content: "休日運行費", qty: holidayDays, unit: "日", unitPrice: 10000 });
     }
   }
 
@@ -571,6 +634,14 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
     const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
       items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: staff.overRate });
+    }
+  }
+
+  // ⑤ 休日加算Aパターン：水・土・日に出勤した日数×1万円（税抜）を「休日手当」として別行加算
+  if (String(staff.billingPattern || "").trim() === BILLING_PATTERN.HOLIDAY_A) {
+    const holidayDays = countHolidayDates_(rows);
+    if (holidayDays > 0) {
+      items.push({ date: "", content: "休日手当", qty: holidayDays, unit: "日", unitPrice: 10000 });
     }
   }
 
@@ -775,8 +846,9 @@ function generateCompanyDocs(records, companyMap, targetLabel, targetYear, targe
     savePdfSingleSheet(kanriSS, kanriCopy, kanriName, kanriFolder, "運行管理表");
     Logger.log("    運行管理表 生成完了：" + kanriName);
 
-    // お客様請求書（①「例外」ありの会社は、料金ロジック未確定のため請求書の生成はスキップ）
-    if (company.exception) {
+    // お客様請求書（①「例外」ありでも、請求パターンが実装済み（COMPANY_BILLING_PATTERNS）なら通常通り生成する）
+    const isImplementedCompanyPattern = COMPANY_BILLING_PATTERNS.indexOf(company.billingPattern) !== -1;
+    if (company.exception && !isImplementedCompanyPattern) {
       Logger.log("    ⚠️ 例外ルールありのためお客様請求書はスキップ：" + companyId + "_" + company.companyName + "（" + company.exception + "）");
       return;
     }
