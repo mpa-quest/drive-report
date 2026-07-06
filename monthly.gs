@@ -460,10 +460,10 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   if (!hasOverRate) {
     // 超過単価が空欄 → 単価（基本料金÷基本時間）×実稼働時間の実額制（超過という概念なし）
     if (applyBasicFee && basicHours) {
-      items.push({ date: "", content: "運行代", qty: totalHours, unit: "時間", unitPrice: company.basicFee / basicHours });
+      items.push({ date: "", content: "運行管理費", qty: totalHours, unit: "時間", unitPrice: company.basicFee / basicHours });
     }
   } else if (applyBasicFee) {
-    items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: company.basicFee });
+    items.push({ date: "", content: "運行管理費", qty: 1, unit: "式", unitPrice: company.basicFee });
   }
 
   // ② 交通費（電車通勤）：お客様への請求不要チェックの概念はないため常に計上
