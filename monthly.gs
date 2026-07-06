@@ -584,20 +584,23 @@ function createGmailDrafts(companyMap, companyFolder, kanriFolder, targetLabel) 
     const invoiceFile = companyFileMap[invoiceName];
     const kanriFile   = kanriFileMap[kanriName];
 
-    // 請求書ファイルがなければスキップ
-    if (!invoiceFile) {
-      Logger.log("  ⚠️ 請求書PDFが見つからないためスキップ：" + invoiceName);
+    // 請求書・運行管理表のどちらもなければスキップ（例外ありの会社は請求書が無いこともある）
+    if (!invoiceFile && !kanriFile) {
+      Logger.log("  ⚠️ 請求書・運行管理表とも見つからないためスキップ：" + companyId + "_" + company.companyName);
       skipCount++;
       return;
     }
 
     Logger.log("  下書き作成中：" + company.email + "（" + company.companyName + "）");
+    if (!invoiceFile) {
+      Logger.log("  ⚠️ 請求書PDFが見つからないため運行管理表のみ添付：" + invoiceName);
+    }
     if (!kanriFile) {
       Logger.log("  ⚠️ 運行管理表PDFが見つからないため請求書のみ添付：" + kanriName);
     }
 
     const subject = "【ご請求】" + targetLabel + "分　株式会社エグゼクティブサポート";
-    
+
     const body =
       (company.contactName || company.companyName) + " 様\n\n" +
       "いつもお世話になっております。\n" +
@@ -608,13 +611,10 @@ function createGmailDrafts(companyMap, companyFolder, kanriFolder, targetLabel) 
       "株式会社エグゼクティブサポート\n" +
       "──────────────────";
 
-    // 添付ファイルの配列を準備
-    const attachments = [invoiceFile.getAs(MimeType.PDF)];
-    
-    // 運行管理表ファイルが見つかった場合のみ、添付配列に追加
-    if (kanriFile) {
-      attachments.push(kanriFile.getAs(MimeType.PDF));
-    }
+    // 添付ファイルの配列を準備（存在するものだけ添付）
+    const attachments = [];
+    if (invoiceFile) attachments.push(invoiceFile.getAs(MimeType.PDF));
+    if (kanriFile)   attachments.push(kanriFile.getAs(MimeType.PDF));
 
     GmailApp.createDraft(
       company.email,
