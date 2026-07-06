@@ -372,6 +372,195 @@ function parseHoursToNumber_(hoursText) {
 }
 
 // =====================
+// 請求書明細（基本料金・超過時間・立替費用）を組み立てるための共通ヘルパー
+// =====================
+
+// 運行記録シートの表示値から、該当レコード1件分の実稼働時間（分）を取得
+// ※ writeDetailRows（kanri）内のマッチングロジックと同等
+function getMatchedWorkingMinutes_(r, dcm, displayValues) {
+  const tz = Session.getScriptTimeZone();
+  let formattedTargetDate = "";
+  if (r.date instanceof Date) {
+    formattedTargetDate = Utilities.formatDate(r.date, tz, "yyyy/MM/dd");
+  } else if (r.date) {
+    const d = new Date(r.date);
+    formattedTargetDate = isNaN(d.getTime()) ? String(r.date) : Utilities.formatDate(d, tz, "yyyy/MM/dd");
+  }
+  const targetTimestamp = r.timestamp ? String(r.timestamp).trim() : "";
+
+  for (let k = 1; k < displayValues.length; k++) {
+    const rowTimestamp = displayValues[k][dcm["タイムスタンプ"]] ? String(displayValues[k][dcm["タイムスタンプ"]]).trim() : "";
+    const rowDateStr   = displayValues[k][dcm["日付"]]           ? String(displayValues[k][dcm["日付"]]).trim()           : "";
+    const rowStaffId   = displayValues[k][dcm["スタッフID"]]     ? String(displayValues[k][dcm["スタッフID"]]).trim()     : "";
+
+    const normalizedRowDate    = rowDateStr.replace(/-/g, "/");
+    const normalizedTargetDate = formattedTargetDate.replace(/-/g, "/");
+
+    if ((targetTimestamp !== "" && rowTimestamp === targetTimestamp) ||
+        (normalizedRowDate === normalizedTargetDate && rowStaffId === String(r.staffId).trim())) {
+      const whDisplay = String(displayValues[k][dcm["稼働時間"]] || "").trim();
+      let workingMinutes = 0;
+      const jpH = whDisplay.match(/(\d+)時間/);
+      const jpM = whDisplay.match(/(\d+)分/);
+      if (jpH || jpM) {
+        workingMinutes = (jpH ? parseInt(jpH[1]) : 0) * 60 + (jpM ? parseInt(jpM[1]) : 0);
+      } else {
+        const hm = whDisplay.match(/^(\d+):(\d{2})/);
+        if (hm) workingMinutes = parseInt(hm[1]) * 60 + parseInt(hm[2]);
+      }
+      return workingMinutes;
+    }
+  }
+  return 0;
+}
+
+// 明細行（rows）の合計稼働時間を時間（小数）で算出
+function getTotalWorkedHours_(rows, dcm, displayValues) {
+  let totalMinutes = 0;
+  rows.forEach(function(r) {
+    totalMinutes += getMatchedWorkingMinutes_(r, dcm, displayValues);
+  });
+  return totalMinutes / 60;
+}
+
+// 超過時間の端数処理：15分単位で切り上げ
+function ceilToQuarterHour_(hours) {
+  return Math.ceil(hours * 4) / 4;
+}
+
+// 税込金額 → 税抜金額（切り捨て）。立替費用（フォーム入力＝税込）用
+function toTaxExcluded_(taxIncludedAmount) {
+  return Math.floor(taxIncludedAmount / 1.1);
+}
+
+// "2026年07月" のような対象月ラベルから、その月の1日を "yyyy/MM/dd" 文字列で返す
+function getFirstDayOfMonthStr_(targetLabel) {
+  const m = String(targetLabel || "").match(/(\d+)年(\d+)月/);
+  if (!m) return "";
+  const y = parseInt(m[1]);
+  const mo = String(parseInt(m[2])).padStart(2, "0");
+  return y + "/" + mo + "/01";
+}
+
+// 会社向け請求書の明細行（運行代・時間超過分・立替費用）を組み立てる
+// ※ 会社マスタの基本料金・超過単価は税抜で入力されている前提
+function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
+  const items = [];
+  if (!company) return items;
+
+  const applyBasicFee = shouldApplyBasicFee_(company, rows);
+  const basicHours    = parseHoursToNumber_(company.basicHours);
+  const totalHours    = getTotalWorkedHours_(rows, dcm, displayValues);
+
+  if (!company.overRate) {
+    // 超過単価が空欄 → 単価（基本料金÷基本時間）×実稼働時間の実額制（超過という概念なし）
+    if (applyBasicFee && basicHours) {
+      items.push({ date: "", content: "運行代", qty: totalHours, unit: "時間", unitPrice: company.basicFee / basicHours });
+    }
+  } else {
+    // 通常ケース：基本時間までは基本料金、超えた分だけ超過単価×超過時間
+    if (applyBasicFee) {
+      items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: company.basicFee });
+    }
+    if (basicHours) {
+      const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
+      if (overHours > 0) {
+        items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: company.overRate });
+      }
+    }
+  }
+
+  // 立替費用（ガソリン代・燃料代・パーキング代・電車通勤）：お客様への請求不要チェックは除外
+  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0, "電車通勤": 0 };
+  rows.forEach(function(r) {
+    if (!r.gasolineNC) expenseTotals["ガソリン代"]   += parseFloat(r.gasoline)      || 0;
+    if (!r.fuelNC)     expenseTotals["燃料代"]       += parseFloat(r.fuel)          || 0;
+    if (!r.parkingNC)  expenseTotals["パーキング代"] += parseFloat(r.parking)       || 0;
+    expenseTotals["電車通勤"] += parseFloat(r.trainCommute) || 0;
+  });
+  Object.keys(expenseTotals).forEach(function(label) {
+    const taxIncluded = expenseTotals[label];
+    if (taxIncluded > 0) {
+      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+    }
+  });
+
+  // お客様請求書は自社（インボイス登録済み）発行のため、常に課税対象（10%）
+  items.forEach(function(it) { it.taxRate = 0.1; });
+
+  return items;
+}
+
+// スタッフ向け請求書の明細行（運行代・時間超過分・立替費用）を組み立てる
+// ※ スタッフマスタの基本給・超過単価も会社マスタと同様、税抜で入力されている前提
+function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
+  const items = [];
+  if (!staff) return items;
+
+  const unit       = String(staff.payUnit || "").trim();
+  const totalHours = getTotalWorkedHours_(rows, dcm, displayValues);
+
+  if (unit === "月額固定") {
+    // 実稼働時間に関係なく基本給そのまま（超過なし）
+    items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: staff.basicPay });
+  } else {
+    const basicHours = parseHoursToNumber_(unit);
+    if (basicHours) {
+      if (!staff.overRate) {
+        items.push({ date: "", content: "運行代", qty: totalHours, unit: "時間", unitPrice: staff.basicPay / basicHours });
+      } else {
+        items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: staff.basicPay });
+        const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
+        if (overHours > 0) {
+          items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: staff.overRate });
+        }
+      }
+    } else {
+      Logger.log("  ⚠️ 単位から基本時間を判定できないため給与明細を計算できません：" + staff.staffId);
+    }
+  }
+
+  // 立替費用（会社クレカ払いの場合はスタッフ本人が立て替えていないため対象外）
+  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0, "電車通勤": 0 };
+  rows.forEach(function(r) {
+    if (r.companyCardPayment) return;
+    expenseTotals["ガソリン代"]   += parseFloat(r.gasoline)      || 0;
+    expenseTotals["燃料代"]       += parseFloat(r.fuel)          || 0;
+    expenseTotals["パーキング代"] += parseFloat(r.parking)       || 0;
+    expenseTotals["電車通勤"]     += parseFloat(r.trainCommute) || 0;
+  });
+  Object.keys(expenseTotals).forEach(function(label) {
+    const taxIncluded = expenseTotals[label];
+    if (taxIncluded > 0) {
+      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+    }
+  });
+
+  // 登録番号（インボイス発行事業者番号）がある場合のみ課税対象（10%）。
+  // 登録番号が空欄＝免税事業者扱いのため、税率は設定しない（消費税0円、小計＝合計になる）
+  const isTaxable = !!staff.regNumber;
+  items.forEach(function(it) { it.taxRate = isTaxable ? 0.1 : ""; });
+
+  return items;
+}
+
+// 組み立てた明細を請求書テンプレートの明細エリア（B/D/L/M/N/P列）へ書き込む
+// Q列（金額）は "=IF(L<>"",L*N,"")" 形式の数式を都度設定する（テンプレート側で未設定の行があるため）
+// dateStr：明細行すべてに共通で入れる日付（対象月の1日）
+function writeInvoiceLineItems_(sheet, items, startRow, dateStr) {
+  items.forEach(function(item, idx) {
+    const row = startRow + idx;
+    sheet.getRange(row, 2).setValue(dateStr || "");                    // B: 日付（対象月の1日）
+    sheet.getRange(row, 4).setValue(item.content);                     // D: 内容
+    sheet.getRange(row, 12).setValue(item.qty);                        // L: 数量
+    sheet.getRange(row, 13).setValue(item.unit);                       // M: 単位
+    sheet.getRange(row, 14).setValue(Math.round(item.unitPrice));      // N: 単価（税抜）
+    sheet.getRange(row, 16).setValue(item.taxRate !== undefined ? item.taxRate : 0.1); // P: 税率（登録番号が無いスタッフは空欄＝非課税）
+    sheet.getRange(row, 17).setFormula("=IF(L" + row + "<>\"\",L" + row + "*N" + row + ",\"\")"); // Q: 金額（税抜）
+  });
+}
+
+// =====================
 // 会社マスタの「締日」（支払日パターン："20日" or "月末"）に応じて支払期日を算出
 //   ・"月末" → 翌月末日
 //   ・それ以外（"20日"含む・未設定含む） → 翌月20日（デフォルト）
@@ -439,8 +628,12 @@ function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, temp
     // 振込期日（C16固定）
     sheet.getRange("C16").setValue(paymentDate);
 
+    // 消費税は切り捨て（テンプレート既存の ROUND を ROUNDDOWN に上書き）
+    sheet.getRange("D38").setFormula("=ROUNDDOWN(F38*10%,0)");
+    sheet.getRange("D39").setFormula("=ROUNDDOWN(F39*8%,0)");
+
     // 明細行を書き込み
-    writeDetailRows(sheet, rows, "staff");
+    writeDetailRows(sheet, rows, "staff", staff, targetLabel);
 
     // スタッフ請求書シートのみPDF出力
     savePdfSingleSheet(ss, copy, fileName, folder, "スタッフ請求書");
@@ -537,7 +730,11 @@ function generateCompanyDocs(records, companyMap, targetLabel, targetYear, targe
     const companyPaymentDate = calculatePaymentDate_(targetYear, targetMonth, company.closingDay);
     invoiceSheet.getRange("C16").setValue(companyPaymentDate);
 
-    writeDetailRows(invoiceSheet, rows, "company");
+    // 消費税は切り捨て（テンプレート既存の ROUND を ROUNDDOWN に上書き）
+    invoiceSheet.getRange("D38").setFormula("=ROUNDDOWN(F38*10%,0)");
+    invoiceSheet.getRange("D39").setFormula("=ROUNDDOWN(F39*8%,0)");
+
+    writeDetailRows(invoiceSheet, rows, "company", company, targetLabel);
     savePdfSingleSheet(invoiceSS, invoiceCopy, invoiceName, companyFolder, "お客様請求書");
     Logger.log("    お客様請求書 生成完了：" + invoiceName);
   });
@@ -653,7 +850,7 @@ function replaceInSheet(sheet, placeholder, value) {
 // =====================
 // 明細行を書き込み（不具合改修済）
 // =====================
-function writeDetailRows(sheet, rows, type) {
+function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
   // 「日付」ヘッダーの次の行を明細開始行として探す（全列スキャン・完全一致）
   const data = sheet.getDataRange().getValues();
   let startRow = -1;
@@ -688,6 +885,17 @@ function writeDetailRows(sheet, rows, type) {
   }
   const kanriCm = (type === "kanri") ? buildColMap(sheet, startRow - 1) : {};
   const dcm     = getColumnMapFromSheet(recordSheet); // 運行記録シートは1行目がヘッダー
+
+  // お客様請求書・スタッフ請求書：日ごとの明細ではなく、運行代・時間超過分・立替費用の集計行を書き込む
+  if (type === "company" || type === "staff") {
+    const items = (type === "company")
+      ? buildCompanyInvoiceLineItems_(masterRecord, rows, dcm, displayValues)
+      : buildStaffInvoiceLineItems_(masterRecord, rows, dcm, displayValues);
+    const dateStr = getFirstDayOfMonthStr_(targetLabel); // すべて対象月の1日
+    writeInvoiceLineItems_(sheet, items, startRow, dateStr);
+    Logger.log("    明細書き込み完了：type=" + type + "、" + items.length + " 件");
+    return;
+  }
 
   rows.forEach(function(r, idx) {
     const row = startRow + idx;
@@ -804,12 +1012,6 @@ function writeDetailRows(sheet, rows, type) {
       // 稼働時間の表示形式を[h]:mmに設定
       const whColIdx = getCol("稼働時間");
       if (whColIdx !== -1) sheet.getRange(row, whColIdx).setNumberFormat("[h]:mm");
-      
-    } else {
-      // お客様請求書・ドライバー請求書用
-      // ⚠️ 金額計算ロジック未実装のため現時点では書き込みをスキップ
-      // ヒアリング結果確定後に実装予定（単価・超過料金・消費税計算など）
-      Logger.log("    [SKIP] 請求書明細書き込みスキップ（金額計算ロジック未実装）：" + type);
     }
   });
 
