@@ -565,7 +565,7 @@ function writeInvoiceLineItems_(sheet, items, startRow, dateStr) {
 // 小計・消費税・合計をテンプレートの数式（SUM/SUMIF）に頼らず、GAS側で直接計算して値として書き込む
 // D38：10%対象の消費税／F38：10%対象の金額（税抜）
 // D39：8%対象の消費税／F39：8%対象の金額（税抜）
-// Q37：小計／Q38：消費税／Q39：合計
+// Q36：小計／Q37：消費税／Q38：合計
 // B11：ご請求金額（税込）＝合計と同じ値を直接書き込む
 function writeInvoiceSummary_(sheet, items) {
   let net10 = 0, net8 = 0, netOther = 0;
@@ -590,9 +590,9 @@ function writeInvoiceSummary_(sheet, items) {
   sheet.getRange("F39").setValue(net8);
   sheet.getRange("D38").setValue(tax10);
   sheet.getRange("D39").setValue(tax8);
-  sheet.getRange("Q37").setValue(subtotal);   // 小計
-  sheet.getRange("Q38").setValue(taxTotal);   // 消費税
-  sheet.getRange("Q39").setValue(grandTotal); // 合計
+  sheet.getRange("Q36").setValue(subtotal);   // 小計
+  sheet.getRange("Q37").setValue(taxTotal);   // 消費税
+  sheet.getRange("Q38").setValue(grandTotal); // 合計
   sheet.getRange("B11").setValue(grandTotal); // ご請求金額（税込）
 }
 
