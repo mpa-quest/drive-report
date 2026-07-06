@@ -512,6 +512,10 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   let basicHours   = null;
   let hasOverRate  = false;
 
+  // 登録番号（インボイス発行事業者番号）がある場合のみ課税対象（10%）。
+  // 登録番号が空欄＝免税事業者扱いのため、税率は0%にする（消費税0円、小計＝合計になる）
+  const isTaxable = !!staff.regNumber;
+
   // ① 運行代
   if (unit === "月額固定") {
     // 実稼働時間に関係なく基本給そのまま（超過なし）
@@ -531,14 +535,16 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   }
 
   // ② 交通費（電車通勤）：会社クレカ払いの場合は対象外
+  // フォーム入力は税込のまま。登録番号があれば税抜に変換、なければ税込金額をそのまま使う
   const trainTotal = rows.reduce(function(sum, r) {
     return sum + (r.companyCardPayment ? 0 : (parseFloat(r.trainCommute) || 0));
   }, 0);
   if (trainTotal > 0) {
-    items.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: toTaxExcluded_(trainTotal) });
+    items.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: isTaxable ? toTaxExcluded_(trainTotal) : trainTotal });
   }
 
   // ③ 立替費用（ガソリン代・燃料代・パーキング代）：会社クレカ払いの場合は対象外
+  // フォーム入力は税込のまま。登録番号があれば税抜に変換、なければ税込金額をそのまま使う
   const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0 };
   rows.forEach(function(r) {
     if (r.companyCardPayment) return;
@@ -549,7 +555,7 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   ["ガソリン代", "燃料代", "パーキング代"].forEach(function(label) {
     const taxIncluded = expenseTotals[label];
     if (taxIncluded > 0) {
-      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: isTaxable ? toTaxExcluded_(taxIncluded) : taxIncluded });
     }
   });
 
@@ -561,9 +567,6 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
     }
   }
 
-  // 登録番号（インボイス発行事業者番号）がある場合のみ課税対象（10%）。
-  // 登録番号が空欄＝免税事業者扱いのため、税率は0%にする（消費税0円、小計＝合計になる）
-  const isTaxable = !!staff.regNumber;
   items.forEach(function(it) { it.taxRate = isTaxable ? 0.1 : 0; });
 
   return items;
