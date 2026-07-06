@@ -444,8 +444,9 @@ function getFirstDayOfMonthStr_(targetLabel) {
   return y + "/" + mo + "/01";
 }
 
-// 会社向け請求書の明細行（運行代・時間超過分・立替費用）を組み立てる
+// 会社向け請求書の明細行（運行代・交通費・立替費用・時間超過分）を組み立てる
 // ※ 会社マスタの基本料金・超過単価は税抜で入力されている前提
+// ※ 表示順：運行代 → 交通費 → 立替費用（ガソリン代・燃料代・パーキング代） → 時間超過分
 function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   const items = [];
   if (!company) return items;
@@ -453,41 +454,45 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   const applyBasicFee = shouldApplyBasicFee_(company, rows);
   const basicHours    = parseHoursToNumber_(company.basicHours);
   const totalHours    = getTotalWorkedHours_(rows, dcm, displayValues);
+  const hasOverRate   = !!company.overRate;
 
-  if (!company.overRate) {
+  // ① 運行代（基本料金 or 超過単価空欄時の実額制）
+  if (!hasOverRate) {
     // 超過単価が空欄 → 単価（基本料金÷基本時間）×実稼働時間の実額制（超過という概念なし）
     if (applyBasicFee && basicHours) {
       items.push({ date: "", content: "運行代", qty: totalHours, unit: "時間", unitPrice: company.basicFee / basicHours });
     }
-  } else {
-    // 通常ケース：基本時間までは基本料金、超えた分だけ超過単価×超過時間
-    if (applyBasicFee) {
-      items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: company.basicFee });
-    }
-    if (basicHours) {
-      const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
-      if (overHours > 0) {
-        items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: company.overRate });
-      }
-    }
+  } else if (applyBasicFee) {
+    items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: company.basicFee });
   }
 
-  // 立替費用（ガソリン代・燃料代・パーキング代・交通費(電車通勤)）：お客様への請求不要チェックは除外
-  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0, "電車通勤": 0 };
+  // ② 交通費（電車通勤）：お客様への請求不要チェックの概念はないため常に計上
+  const trainTotal = rows.reduce(function(sum, r) { return sum + (parseFloat(r.trainCommute) || 0); }, 0);
+  if (trainTotal > 0) {
+    items.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: toTaxExcluded_(trainTotal) });
+  }
+
+  // ③ 立替費用（ガソリン代・燃料代・パーキング代）：お客様への請求不要チェックは除外
+  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0 };
   rows.forEach(function(r) {
-    if (!r.gasolineNC) expenseTotals["ガソリン代"]   += parseFloat(r.gasoline)      || 0;
-    if (!r.fuelNC)     expenseTotals["燃料代"]       += parseFloat(r.fuel)          || 0;
-    if (!r.parkingNC)  expenseTotals["パーキング代"] += parseFloat(r.parking)       || 0;
-    expenseTotals["電車通勤"] += parseFloat(r.trainCommute) || 0;
+    if (!r.gasolineNC) expenseTotals["ガソリン代"]   += parseFloat(r.gasoline) || 0;
+    if (!r.fuelNC)     expenseTotals["燃料代"]       += parseFloat(r.fuel)     || 0;
+    if (!r.parkingNC)  expenseTotals["パーキング代"] += parseFloat(r.parking)  || 0;
   });
-  // 請求書上の表示名（電車通勤 → 交通費）
-  const expenseLabels = { "ガソリン代": "ガソリン代", "燃料代": "燃料代", "パーキング代": "パーキング代", "電車通勤": "交通費" };
-  Object.keys(expenseTotals).forEach(function(key) {
-    const taxIncluded = expenseTotals[key];
+  ["ガソリン代", "燃料代", "パーキング代"].forEach(function(label) {
+    const taxIncluded = expenseTotals[label];
     if (taxIncluded > 0) {
-      items.push({ date: "", content: expenseLabels[key], qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
     }
   });
+
+  // ④ 時間超過分（超過単価が設定されている場合のみ）
+  if (hasOverRate && basicHours) {
+    const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
+    if (overHours > 0) {
+      items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: company.overRate });
+    }
+  }
 
   // お客様請求書は自社（インボイス登録済み）発行のため、常に課税対象（10%）
   items.forEach(function(it) { it.taxRate = 0.1; });
@@ -495,52 +500,66 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   return items;
 }
 
-// スタッフ向け請求書の明細行（運行代・時間超過分・立替費用）を組み立てる
+// スタッフ向け請求書の明細行（運行代・交通費・立替費用・時間超過分）を組み立てる
 // ※ スタッフマスタの基本給・超過単価も会社マスタと同様、税抜で入力されている前提
+// ※ 表示順：運行代 → 交通費 → 立替費用（ガソリン代・燃料代・パーキング代） → 時間超過分
 function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   const items = [];
   if (!staff) return items;
 
   const unit       = String(staff.payUnit || "").trim();
   const totalHours = getTotalWorkedHours_(rows, dcm, displayValues);
+  let basicHours   = null;
+  let hasOverRate  = false;
 
+  // ① 運行代
   if (unit === "月額固定") {
     // 実稼働時間に関係なく基本給そのまま（超過なし）
     items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: staff.basicPay });
   } else {
-    const basicHours = parseHoursToNumber_(unit);
+    basicHours = parseHoursToNumber_(unit);
+    hasOverRate = !!staff.overRate;
     if (basicHours) {
-      if (!staff.overRate) {
+      if (!hasOverRate) {
         items.push({ date: "", content: "運行代", qty: totalHours, unit: "時間", unitPrice: staff.basicPay / basicHours });
       } else {
         items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: staff.basicPay });
-        const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
-        if (overHours > 0) {
-          items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: staff.overRate });
-        }
       }
     } else {
       Logger.log("  ⚠️ 単位から基本時間を判定できないため給与明細を計算できません：" + staff.staffId);
     }
   }
 
-  // 立替費用（会社クレカ払いの場合はスタッフ本人が立て替えていないため対象外）
-  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0, "電車通勤": 0 };
+  // ② 交通費（電車通勤）：会社クレカ払いの場合は対象外
+  const trainTotal = rows.reduce(function(sum, r) {
+    return sum + (r.companyCardPayment ? 0 : (parseFloat(r.trainCommute) || 0));
+  }, 0);
+  if (trainTotal > 0) {
+    items.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: toTaxExcluded_(trainTotal) });
+  }
+
+  // ③ 立替費用（ガソリン代・燃料代・パーキング代）：会社クレカ払いの場合は対象外
+  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0 };
   rows.forEach(function(r) {
     if (r.companyCardPayment) return;
-    expenseTotals["ガソリン代"]   += parseFloat(r.gasoline)      || 0;
-    expenseTotals["燃料代"]       += parseFloat(r.fuel)          || 0;
-    expenseTotals["パーキング代"] += parseFloat(r.parking)       || 0;
-    expenseTotals["電車通勤"]     += parseFloat(r.trainCommute) || 0;
+    expenseTotals["ガソリン代"]   += parseFloat(r.gasoline) || 0;
+    expenseTotals["燃料代"]       += parseFloat(r.fuel)     || 0;
+    expenseTotals["パーキング代"] += parseFloat(r.parking)  || 0;
   });
-  // 請求書上の表示名（電車通勤 → 交通費）
-  const expenseLabels = { "ガソリン代": "ガソリン代", "燃料代": "燃料代", "パーキング代": "パーキング代", "電車通勤": "交通費" };
-  Object.keys(expenseTotals).forEach(function(key) {
-    const taxIncluded = expenseTotals[key];
+  ["ガソリン代", "燃料代", "パーキング代"].forEach(function(label) {
+    const taxIncluded = expenseTotals[label];
     if (taxIncluded > 0) {
-      items.push({ date: "", content: expenseLabels[key], qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
+      items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded) });
     }
   });
+
+  // ④ 時間超過分（時間単位かつ超過単価が設定されている場合のみ）
+  if (unit !== "月額固定" && hasOverRate && basicHours) {
+    const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
+    if (overHours > 0) {
+      items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: staff.overRate });
+    }
+  }
 
   // 登録番号（インボイス発行事業者番号）がある場合のみ課税対象（10%）。
   // 登録番号が空欄＝免税事業者扱いのため、税率は0%にする（消費税0円、小計＝合計になる）
