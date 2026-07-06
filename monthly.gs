@@ -428,9 +428,11 @@ function ceilToQuarterHour_(hours) {
   return Math.ceil(hours * 4) / 4;
 }
 
-// 税込金額 → 税抜金額（切り捨て）。立替費用（フォーム入力＝税込）用
+// 税込金額 → 税抜金額。立替費用（フォーム入力＝税込）用
+// 正しい順序：消費税＝税込金額÷11（切り捨て）を先に算出 → 税抜金額＝税込金額－消費税
 function toTaxExcluded_(taxIncludedAmount) {
-  return Math.floor(taxIncludedAmount / 1.1);
+  const tax = Math.floor(taxIncludedAmount / 11);
+  return taxIncludedAmount - tax;
 }
 
 // "2026年07月" のような対象月ラベルから、その月の1日を "yyyy/MM/dd" 文字列で返す
@@ -560,6 +562,40 @@ function writeInvoiceLineItems_(sheet, items, startRow, dateStr) {
   });
 }
 
+// 小計・消費税・合計をテンプレートの数式（SUM/SUMIF）に頼らず、GAS側で直接計算して値として書き込む
+// D38：10%対象の消費税／F38：10%対象の金額（税抜）
+// D39：8%対象の消費税／F39：8%対象の金額（税抜）
+// Q37：小計／Q38：消費税／Q39：合計
+// B11：ご請求金額（税込）＝合計と同じ値を直接書き込む
+function writeInvoiceSummary_(sheet, items) {
+  let net10 = 0, net8 = 0, netOther = 0;
+  items.forEach(function(item) {
+    const amount = (item.qty || 0) * (Math.round(item.unitPrice) || 0);
+    if (item.taxRate === 0.1) {
+      net10 += amount;
+    } else if (item.taxRate === 0.08) {
+      net8 += amount;
+    } else {
+      netOther += amount; // 登録番号なしスタッフ等、非課税扱い（税率未設定）
+    }
+  });
+
+  const tax10 = Math.floor(net10 * 0.10);
+  const tax8  = Math.floor(net8  * 0.08);
+  const taxTotal   = tax10 + tax8;
+  const subtotal   = net10 + net8 + netOther;
+  const grandTotal = subtotal + taxTotal;
+
+  sheet.getRange("F38").setValue(net10);
+  sheet.getRange("F39").setValue(net8);
+  sheet.getRange("D38").setValue(tax10);
+  sheet.getRange("D39").setValue(tax8);
+  sheet.getRange("Q37").setValue(subtotal);   // 小計
+  sheet.getRange("Q38").setValue(taxTotal);   // 消費税
+  sheet.getRange("Q39").setValue(grandTotal); // 合計
+  sheet.getRange("B11").setValue(grandTotal); // ご請求金額（税込）
+}
+
 // =====================
 // 会社マスタの「締日」（支払日パターン："20日" or "月末"）に応じて支払期日を算出
 //   ・"月末" → 翌月末日
@@ -628,11 +664,7 @@ function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, temp
     // 振込期日（C16固定）
     sheet.getRange("C16").setValue(paymentDate);
 
-    // 消費税は切り捨て（テンプレート既存の ROUND を ROUNDDOWN に上書き）
-    sheet.getRange("D38").setFormula("=ROUNDDOWN(F38*10%,0)");
-    sheet.getRange("D39").setFormula("=ROUNDDOWN(F39*8%,0)");
-
-    // 明細行を書き込み
+    // 明細行を書き込み（小計・消費税・合計もこの中でGAS側が直接計算して書き込む）
     writeDetailRows(sheet, rows, "staff", staff, targetLabel);
 
     // スタッフ請求書シートのみPDF出力
@@ -730,10 +762,7 @@ function generateCompanyDocs(records, companyMap, targetLabel, targetYear, targe
     const companyPaymentDate = calculatePaymentDate_(targetYear, targetMonth, company.closingDay);
     invoiceSheet.getRange("C16").setValue(companyPaymentDate);
 
-    // 消費税は切り捨て（テンプレート既存の ROUND を ROUNDDOWN に上書き）
-    invoiceSheet.getRange("D38").setFormula("=ROUNDDOWN(F38*10%,0)");
-    invoiceSheet.getRange("D39").setFormula("=ROUNDDOWN(F39*8%,0)");
-
+    // 明細行を書き込み（小計・消費税・合計もこの中でGAS側が直接計算して書き込む）
     writeDetailRows(invoiceSheet, rows, "company", company, targetLabel);
     savePdfSingleSheet(invoiceSS, invoiceCopy, invoiceName, companyFolder, "お客様請求書");
     Logger.log("    お客様請求書 生成完了：" + invoiceName);
@@ -893,6 +922,7 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
       : buildStaffInvoiceLineItems_(masterRecord, rows, dcm, displayValues);
     const dateStr = getFirstDayOfMonthStr_(targetLabel); // すべて対象月の1日
     writeInvoiceLineItems_(sheet, items, startRow, dateStr);
+    writeInvoiceSummary_(sheet, items); // 小計・消費税・合計はテンプレート数式を使わずGAS側で直接計算
     Logger.log("    明細書き込み完了：type=" + type + "、" + items.length + " 件");
     return;
   }
