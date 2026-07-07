@@ -496,6 +496,15 @@ function ceilToQuarterHour_(hours) {
   return Math.ceil(hours * 4) / 4;
 }
 
+// 小数の時間（例：23.25）を「23時間15分」のような表示用文字列に変換する
+// ※ 15分単位（0.25時間刻み）で丸め済みの値を渡す前提。分が0のときは「〇時間」のみ表示する
+function formatHoursAsHM_(hours) {
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m === 0 ? (h + "時間") : (h + "時間" + m + "分");
+}
+
 // 税込金額 → 税抜金額。立替費用（フォーム入力＝税込）用
 // 正しい順序：消費税＝税込金額÷11（切り捨て）を先に算出 → 税抜金額＝税込金額－消費税
 function toTaxExcluded_(taxIncludedAmount) {
@@ -577,7 +586,7 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   if (hasOverRate && basicHours) {
     const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
-      baseItems.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: company.overRate });
+      baseItems.push({ date: "", content: "時間超過分" + formatHoursAsHM_(overHours), qty: overHours, unit: "時間", unitPrice: company.overRate });
     }
   }
 
@@ -684,7 +693,7 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   if (unit !== "月額固定" && !isDayBased && hasOverRate && basicHours) {
     const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
-      items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: staff.overRate });
+      items.push({ date: "", content: "時間超過分" + formatHoursAsHM_(overHours), qty: overHours, unit: "時間", unitPrice: staff.overRate });
     }
   }
 
