@@ -605,9 +605,15 @@
   <div style="background:#FFF7ED; border:1px solid #FED7AA; border-radius:12px; padding:16px;">
     <p style="font-size:13px; font-weight:700; color:#C2410C; margin-bottom:12px;">⚠️ スタッフ未登録です。以下から登録してください。</p>
     <div style="display:flex; flex-direction:column; gap:8px;">
-      <div style="display:flex; flex-direction:column; gap:4px;">
-        <label style="font-size:11px; font-weight:600; color:#6B7280;">氏名<span style="color:#DC2626; margin-left:3px;">*</span></label>
-        <input type="text" id="regStaffName" placeholder="例：山田 太郎" style="border:1.5px solid #E5E7EB; border-radius:8px; padding:9px 12px; font-size:15px; font-family:inherit;">
+      <div style="display:flex; gap:8px;">
+        <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+          <label style="font-size:11px; font-weight:600; color:#6B7280;">姓<span style="color:#DC2626; margin-left:3px;">*</span></label>
+          <input type="text" id="regStaffSurname" placeholder="例：山田" style="border:1.5px solid #E5E7EB; border-radius:8px; padding:9px 12px; font-size:15px; font-family:inherit;">
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+          <label style="font-size:11px; font-weight:600; color:#6B7280;">名<span style="color:#DC2626; margin-left:3px;">*</span></label>
+          <input type="text" id="regStaffGivenName" placeholder="例：太郎" style="border:1.5px solid #E5E7EB; border-radius:8px; padding:9px 12px; font-size:15px; font-family:inherit;">
+        </div>
       </div>
       <button type="button" id="registerBtn" style="background:#C2410C; color:white; border:none; border-radius:8px; padding:12px; font-size:15px; font-weight:700; font-family:inherit; margin-top:4px;">登録する</button>
     </div>
@@ -963,10 +969,11 @@
     });
 
   document.getElementById("registerBtn").addEventListener("click", async () => {
-    const regStaffName = document.getElementById("regStaffName").value.trim();
+    const regStaffSurname   = document.getElementById("regStaffSurname").value.trim();
+    const regStaffGivenName = document.getElementById("regStaffGivenName").value.trim();
 
-    if (!regStaffName) {
-      alert("氏名を入力してください。");
+    if (!regStaffSurname || !regStaffGivenName) {
+      alert("姓・名を両方入力してください。");
       return;
     }
 
@@ -980,14 +987,15 @@
         body: JSON.stringify({
           action: "registerStaff",
           lineUserId,
-          staffName: regStaffName,
+          staffSurname: regStaffSurname,
+          staffGivenName: regStaffGivenName,
         }),
       });
       const data = await res.json();
 
       if (data.success) {
         staffId = data.staffId;
-        staffName = regStaffName;
+        staffName = data.staffName; // サーバー側で「姓　名」（全角スペース区切り）に整形された値
         document.getElementById("userName").textContent = staffName;
         document.getElementById("staffInfo").textContent = "スタッフID：" + staffId;
         document.getElementById("registerSection").style.display = "none";
