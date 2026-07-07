@@ -1414,11 +1414,9 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
-  // スタッフ登録完了画面：「記録する」ボタン → フォーム画面に戻る
+  // スタッフ登録完了画面：「記録する」ボタン → 最新の会社紐づけ状態を反映するため、一旦リロードしてフォームへ
   document.getElementById("btnRegisterRecord").addEventListener("click", () => {
-    document.getElementById("registerCompleteScreen").classList.remove("visible");
-    document.querySelector("form").style.display = "";
-    document.querySelector(".user-badge").style.display = "";
+    location.reload();
   });
 
   // スタッフ登録完了画面：「閉じる」ボタン
