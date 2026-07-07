@@ -55,9 +55,13 @@ function registerStaff(payload) {
   const lastRow = sheet.getLastRow();
   const staffId = "E" + String(lastRow).padStart(4, "0");
 
-  sheet.appendRow([payload.lineUserId, staffId, payload.staffName]);
+  // 「姓　名」（全角スペース区切り）に整形して1つの氏名として保存する
+  // ※ monthly.gs 側の extractSurname_ 等、全角スペース区切りの姓名を前提にした処理と揃える
+  const staffName = String(payload.staffSurname || "").trim() + "\u3000" + String(payload.staffGivenName || "").trim();
 
-  return jsonResponse({ success: true, staffId });
+  sheet.appendRow([payload.lineUserId, staffId, staffName]);
+
+  return jsonResponse({ success: true, staffId, staffName });
 }
 
 // =====================
@@ -479,13 +483,18 @@ function getCustomerRecords(params) {
   }
 
   const ss          = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const companyData = ss.getSheetByName("会社マスタ").getDataRange().getValues();
+  const companySheet = ss.getSheetByName("会社マスタ");
+  const companyCm    = getColumnMap(companySheet);
+  if (companyCm["パスワード"] === undefined) {
+    return jsonResponse({ error: "password column not found", records: [] });
+  }
+  const companyData  = companySheet.getDataRange().getValues();
 
-  // ① パスワード照合（G列 = index 6）
+  // ① パスワード照合（列名「パスワード」で動的に取得。列の位置が変わっても対応できる）
   let companyName = null;
   for (let i = 1; i < companyData.length; i++) {
     if (String(companyData[i][0]).trim() !== companyId) continue;
-    const stored = String(companyData[i][6] || "").trim();
+    const stored = String(companyData[i][companyCm["パスワード"]] || "").trim();
     if (!stored || stored !== password) {
       return jsonResponse({ error: "unauthorized", records: [] });
     }
@@ -539,13 +548,18 @@ function verifyCustomer(params) {
   }
 
   const ss   = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const data = ss.getSheetByName("会社マスタ").getDataRange().getValues();
+  const sheet = ss.getSheetByName("会社マスタ");
+  const cm   = getColumnMap(sheet);
+  if (cm["パスワード"] === undefined) {
+    return jsonResponse({ verified: false, reason: "password column not found" });
+  }
+  const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]).trim() !== companyId) continue;
 
-    // G列（index 6）がパスワード
-    const stored = String(data[i][6] || "").trim();
+    // 列名「パスワード」で動的に取得（列の位置が変わっても対応できる）
+    const stored = String(data[i][cm["パスワード"]] || "").trim();
     if (!stored)          return jsonResponse({ verified: false, reason: "no password set" });
     if (stored === password) return jsonResponse({ verified: true, companyName: String(data[i][1]).trim() });
     return jsonResponse({ verified: false, reason: "wrong password" });
