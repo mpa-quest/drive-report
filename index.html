@@ -808,6 +808,17 @@
   </div>
 </div>
 
+<!-- スタッフ登録完了画面（会社の紐づけ待ち） -->
+<div class="complete-screen" id="registerCompleteScreen">
+  <div class="complete-icon">✅</div>
+  <div class="complete-title">スタッフ登録が完了しました</div>
+  <div class="complete-sub">責任者にスタッフ登録が完了した旨のご連絡をお願いします。<br><br>責任者から会社の設定が完了した連絡が届いたら、改めてフォームから運行記録の入力をお願いします。</div>
+  <div class="complete-btns">
+    <button class="btn-continue" id="btnRegisterRecord">記録する</button>
+    <button class="btn-close"    id="btnRegisterClose">閉じる</button>
+  </div>
+</div>
+
 <script>
   const LIFF_ID = "2010522430-YGmulMkA";
 
@@ -1000,7 +1011,11 @@
         document.getElementById("staffInfo").textContent = "スタッフID：" + staffId;
         document.getElementById("registerSection").style.display = "none";
         document.getElementById("submitBtn").disabled = false;
-        alert("登録完了しました！");
+
+        // 登録直後は会社が紐づいていないため、フォームではなく専用の完了画面を表示する
+        document.querySelector("form").style.display = "none";
+        document.querySelector(".user-badge").style.display = "none";
+        document.getElementById("registerCompleteScreen").classList.add("visible");
       } else {
         alert("登録に失敗しました。もう一度お試しください。");
         btn.disabled = false;
@@ -1461,6 +1476,24 @@
         document.querySelector(".user-badge").style.display = "";
         document.getElementById("submitBtn").disabled = false;
         document.getElementById("submitBtn").textContent = "送信する";
+      }
+    };
+
+    // スタッフ登録完了画面：「記録する」ボタン → フォーム画面に戻る
+    document.getElementById("btnRegisterRecord").onclick = function() {
+      document.getElementById("registerCompleteScreen").classList.remove("visible");
+      document.querySelector("form").style.display = "";
+      document.querySelector(".user-badge").style.display = "";
+    };
+
+    // スタッフ登録完了画面：「閉じる」ボタン
+    document.getElementById("btnRegisterClose").onclick = function() {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      } else {
+        document.getElementById("registerCompleteScreen").classList.remove("visible");
+        document.querySelector("form").style.display = "";
+        document.querySelector(".user-badge").style.display = "";
       }
     };
   }
