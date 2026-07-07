@@ -1414,6 +1414,24 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
+  // スタッフ登録完了画面：「記録する」ボタン → フォーム画面に戻る
+  document.getElementById("btnRegisterRecord").addEventListener("click", () => {
+    document.getElementById("registerCompleteScreen").classList.remove("visible");
+    document.querySelector("form").style.display = "";
+    document.querySelector(".user-badge").style.display = "";
+  });
+
+  // スタッフ登録完了画面：「閉じる」ボタン
+  document.getElementById("btnRegisterClose").addEventListener("click", () => {
+    if (liff.isInClient()) {
+      liff.closeWindow();
+    } else {
+      document.getElementById("registerCompleteScreen").classList.remove("visible");
+      document.querySelector("form").style.display = "";
+      document.querySelector(".user-badge").style.display = "";
+    }
+  });
+
   // ── 完了画面表示 ──
   function showCompleteScreen(payload) {
     // フォームを非表示にして完了画面を表示
@@ -1476,24 +1494,6 @@
         document.querySelector(".user-badge").style.display = "";
         document.getElementById("submitBtn").disabled = false;
         document.getElementById("submitBtn").textContent = "送信する";
-      }
-    };
-
-    // スタッフ登録完了画面：「記録する」ボタン → フォーム画面に戻る
-    document.getElementById("btnRegisterRecord").onclick = function() {
-      document.getElementById("registerCompleteScreen").classList.remove("visible");
-      document.querySelector("form").style.display = "";
-      document.querySelector(".user-badge").style.display = "";
-    };
-
-    // スタッフ登録完了画面：「閉じる」ボタン
-    document.getElementById("btnRegisterClose").onclick = function() {
-      if (liff.isInClient()) {
-        liff.closeWindow();
-      } else {
-        document.getElementById("registerCompleteScreen").classList.remove("visible");
-        document.querySelector("form").style.display = "";
-        document.querySelector(".user-badge").style.display = "";
       }
     };
   }
