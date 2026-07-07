@@ -192,7 +192,10 @@ const BILLING_PATTERN = {
   CONSOLIDATED: "一本化",   // 会社のみ：運行代・交通費・立替費用・時間超過分を1行「貴社運行管理請負費用」にまとめる
   HOLIDAY_A:    "休日加算A", // 会社・スタッフ共通：水・土・日の記録日数×1万円（税抜）を別行加算
 };
+// ※ COMPANY_BILLING_PATTERNS は「請求パターン」列に入力できる値の一覧（登録用）。
+//    請求書を生成するかどうかは company.skipInvoice（「請求書作成」列）で判定するため、この配列はゲートには使わない
 const COMPANY_BILLING_PATTERNS = [BILLING_PATTERN.CONSOLIDATED, BILLING_PATTERN.HOLIDAY_A];
+// ※ STAFF_BILLING_PATTERNS も同様に「請求パターン」列の入力候補一覧（登録用）。請求書生成の可否のゲートには使わない
 const STAFF_BILLING_PATTERNS   = [BILLING_PATTERN.HOLIDAY_A];
 
 function getStaffMap(db) {
@@ -214,17 +217,15 @@ function getStaffMap(db) {
     const staffId = col(row, ["スタッフID"], 1);
     if (!staffId) continue;
 
-    // 会社マスタと同様、「例外」列に値があるスタッフは、給与ロジック未確定のためとりあえずスキップ
-    // ただし「請求パターン」列に実装済みパターン（STAFF_BILLING_PATTERNS）が入っている場合はスキップせず特殊ロジックを適用
-    const exceptionNote  = col(row, ["例外"]);
+    // 「備考」列（旧「例外」列）は、通常と異なる料金事情等のメモ欄。請求書生成の可否には使わない
+    // （会社マスタと同様、請求書を作るかどうかは「請求書作成」列だけで判定する）
+    const noteText        = col(row, ["備考", "例外"]);
     const billingPattern = String(col(row, ["請求パターン"]) || "").trim();
-    const isImplementedStaffPattern = STAFF_BILLING_PATTERNS.indexOf(billingPattern) !== -1;
-    if (exceptionNote && !isImplementedStaffPattern) {
-      Logger.log("  ⚠️ 例外ルールありのためスキップ（要個別対応）：" + staffId + "　内容：" + exceptionNote);
-      continue;
-    }
 
     const companyIdsRaw = col(row, ["担当会社"], 3);
+
+    // 「請求書作成」列：値が「不要」の場合のみスキップし、それ以外（空欄含む）は通常通り作成する
+    const invoiceGeneration = String(col(row, ["請求書作成"]) || "").trim();
 
     map[staffId] = {
       lineUserId:  col(row, ["LINEユーザーID"], 0),
@@ -243,6 +244,8 @@ function getStaffMap(db) {
       payUnit:     col(row, ["単位"]),        // "1時間" 等の時間単位、または "月額固定"
       overRate:    Number(col(row, ["超過単価"])) || 0,
       billingPattern: billingPattern,
+      note:        noteText || "",           // 備考（参考メモ。請求書生成の可否には使わない）
+      skipInvoice: invoiceGeneration === "不要", // 「請求書作成」が「不要」のスタッフは請求書（給与明細）を生成しない
     };
   }
   return map;
@@ -305,17 +308,19 @@ function getCompanyMap(db) {
     const companyId = col(row, ["会社ID"], 0);
     if (!companyId) continue;
 
-    // ①「例外」列に値がある会社は、料金ロジック未確定のためお客様請求書の生成は見送るが、
-    //    運行管理表（社内向け）は通常通り作成するため、マップからは除外せずフラグとして保持する
-    const exceptionNote = col(row, ["例外"]);
-    if (exceptionNote) {
-      Logger.log("  ⚠️ 例外ルールあり（要個別対応・請求書は生成しません）：" + companyId + "　内容：" + exceptionNote);
-    }
+    // 「備考」列（旧「例外」列）は、通常と異なる料金事情等のメモ欄。請求書生成の可否には使わない
+    // （請求書を作るかどうかは「請求書作成」列だけで判定する）
+    const exceptionNote = col(row, ["備考", "例外"]);
 
     // 「請求パターン」列：例外の中でも実装済みの特殊料金パターンを示す
     //   BILLING_PATTERN.CONSOLIDATED　→ 運行代・交通費・立替費用・時間超過分を1行「貴社運行管理請負費用」にまとめる
     //   BILLING_PATTERN.HOLIDAY_A     → 水・土・日に運行があった日数×1万円（税抜）を「休日運行費」として別行加算
     const billingPattern = String(col(row, ["請求パターン"]) || "").trim();
+
+    // 「請求書作成」「Gmail下書き」列：プルダウンで「必要」「不要」を選択する運用
+    //   「不要」→ 意図的にスキップ／それ以外（「必要」・空欄）→ 実行する（空欄は「必要」と同じ扱い）
+    const invoiceGeneration = String(col(row, ["請求書作成"]) || "").trim();
+    const gmailDraft         = String(col(row, ["Gmail下書き"]) || "").trim();
 
     map[companyId] = {
       companyId:   companyId,
@@ -327,8 +332,10 @@ function getCompanyMap(db) {
       basicFee:    Number(col(row, ["基本料金"])) || 0,
       basicHours:  col(row, ["基本時間"]),
       overRate:    Number(col(row, ["超過単価"])) || 0,
-      exception:   exceptionNote || "",     // 値があり、かつ請求パターンが未実装のものは請求書生成をスキップ
+      note:        exceptionNote || "",     // 備考（参考メモ。請求書生成の可否には使わない）
       billingPattern: billingPattern,
+      skipInvoice: invoiceGeneration === "不要",    // 「不要」のときだけお客様請求書を生成しない
+      skipGmailDraft: gmailDraft === "不要",        // 「不要」のときだけGmail下書きを作成しない
     };
   }
   return map;
@@ -808,6 +815,13 @@ function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, temp
     }
 
     const rows = grouped[staffId];
+
+    // 「請求書作成」が「不要」指定のスタッフはスキップする
+    if (staff.skipInvoice) {
+      Logger.log("  「請求書作成」が不要指定のためスキップ：" + staffId + "_" + staff.staffName);
+      return;
+    }
+
     const fileName = "【請求書】" + staffId + "_" + staff.staffName + "_" + targetLabel;
     Logger.log("  生成開始：" + fileName + "（" + rows.length + " 件）");
 
@@ -909,10 +923,9 @@ function generateCompanyDocs(records, companyMap, targetLabel, targetYear, targe
     savePdfSingleSheet(kanriSS, kanriCopy, kanriName, kanriFolder, "運行管理表");
     Logger.log("    運行管理表 生成完了：" + kanriName);
 
-    // お客様請求書（①「例外」ありでも、請求パターンが実装済み（COMPANY_BILLING_PATTERNS）なら通常通り生成する）
-    const isImplementedCompanyPattern = COMPANY_BILLING_PATTERNS.indexOf(company.billingPattern) !== -1;
-    if (company.exception && !isImplementedCompanyPattern) {
-      Logger.log("    ⚠️ 例外ルールありのためお客様請求書はスキップ：" + companyId + "_" + company.companyName + "（" + company.exception + "）");
+    // お客様請求書：「請求書作成」列が「不要」の会社はスキップする
+    if (company.skipInvoice) {
+      Logger.log("    「請求書作成」が不要指定のためお客様請求書はスキップ：" + companyId + "_" + company.companyName);
       return;
     }
 
@@ -965,6 +978,14 @@ function createGmailDrafts(companyMap, companyFolder, kanriFolder, targetLabel) 
 
   Object.keys(companyMap).forEach(function(companyId) {
     const company = companyMap[companyId];
+
+    // 「Gmail下書き」列が「不要」の会社はスキップする
+    if (company.skipGmailDraft) {
+      Logger.log("  「Gmail下書き」が不要指定のためスキップ：" + companyId + "_" + company.companyName);
+      skipCount++;
+      return;
+    }
+
     if (!company.email) {
       Logger.log("  メールアドレス未設定のためスキップ：" + companyId + "_" + company.companyName);
       skipCount++;
