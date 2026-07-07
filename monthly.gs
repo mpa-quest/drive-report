@@ -369,8 +369,9 @@ function calculateCompanyFee_(company, totalWorkedHours) {
   // 超過単価が空欄 → 単価×実稼働時間のみ（超過という概念自体がない）
   if (!company.overRate) {
     if (!basicHours) {
-      Logger.log("  ⚠️ 基本時間が未設定のため単価計算不可：" + company.companyId);
-      return null;
+      // 基本時間も空欄で按分計算ができない場合は、基本料金をそのまま固定額として返す
+      Logger.log("  ⚠️ 基本時間が未設定のため実額制の按分ができず、基本料金を固定額として返却：" + company.companyId);
+      return basicFee;
     }
     const unitPrice = basicFee / basicHours;
     return unitPrice * totalWorkedHours;
@@ -385,21 +386,35 @@ function calculateCompanyFee_(company, totalWorkedHours) {
   return basicFee + overHours * company.overRate;
 }
 
-// 対象レコード群の中から「水・土・日」に運行/出勤があったユニークな日数をカウントする
-// ※ 同じ日に複数レコードがあっても1日としてカウント（二重計上しない）
-function countHolidayDates_(rows) {
+// 対象レコード群のユニークな稼働日（キー：yyyy/MM/dd、値：その日の代表Dateオブジェクト）を返す
+// ※ 日付が無い・不正なレコードは無視
+function getUniqueWorkDates_(rows) {
   const seen = {};
   (rows || []).forEach(function(r) {
     if (!r.date) return;
     const d = (r.date instanceof Date) ? r.date : new Date(r.date);
     if (isNaN(d.getTime())) return;
-    const dow = d.getDay(); // 0:日 3:水 6:土
-    if (dow === 0 || dow === 3 || dow === 6) {
-      const key = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy/MM/dd");
-      seen[key] = true;
-    }
+    const key = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy/MM/dd");
+    if (!seen[key]) seen[key] = d;
   });
-  return Object.keys(seen).length;
+  return seen;
+}
+
+// 対象レコード群の中でユニークな稼働日数をカウント（日額単位のスタッフ向け："1日" 等）
+function countUniqueWorkDates_(rows) {
+  return Object.keys(getUniqueWorkDates_(rows)).length;
+}
+
+// 対象レコード群の中から「水・土・日」に運行/出勤があったユニークな日数をカウントする
+// ※ 同じ日に複数レコードがあっても1日としてカウント（二重計上しない）
+function countHolidayDates_(rows) {
+  const dates = getUniqueWorkDates_(rows);
+  let count = 0;
+  Object.keys(dates).forEach(function(key) {
+    const dow = dates[key].getDay(); // 0:日 3:水 6:土
+    if (dow === 0 || dow === 3 || dow === 6) count++;
+  });
+  return count;
 }
 
 // "苗字　名前"（全角スペース区切り）から苗字だけを抽出する。全角スペースが無ければ全体をそのまま返す
@@ -520,6 +535,12 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
     // 超過単価が空欄 → 単価（基本料金÷基本時間）×実稼働時間の実額制（超過という概念なし）
     if (applyBasicFee && basicHours) {
       baseItems.push({ date: "", content: "運行管理費", qty: totalHours, unit: "時間", unitPrice: company.basicFee / basicHours });
+    } else if (applyBasicFee) {
+      // 基本時間も空欄で按分計算ができない場合は、基本料金をそのまま固定額として計上する
+      if (!basicHours) {
+        Logger.log("  ⚠️ 基本時間が未設定のため実額制の按分ができず、基本料金を固定額として計上：" + company.companyId);
+      }
+      baseItems.push({ date: "", content: "運行管理費", qty: 1, unit: "式", unitPrice: company.basicFee });
     }
   } else if (applyBasicFee) {
     baseItems.push({ date: "", content: "運行管理費", qty: 1, unit: "式", unitPrice: company.basicFee });
@@ -596,6 +617,8 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   const totalHours = getTotalWorkedHours_(rows, dcm, displayValues);
   let basicHours   = null;
   let hasOverRate  = false;
+  // 「1日」等、時間ではなく日単位で基本給が決まっているかどうか（"時間"を含まず"日"を含む単位）
+  const isDayBased = /日/.test(unit) && !/時間/.test(unit) && unit !== "月額固定";
 
   // 登録番号（インボイス発行事業者番号）がある場合のみ課税対象（10%）。
   // 登録番号が空欄＝免税事業者扱いのため、税率は0%にする（消費税0円、小計＝合計になる）
@@ -605,6 +628,12 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   if (unit === "月額固定") {
     // 実稼働時間に関係なく基本給そのまま（超過なし）
     items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: staff.basicPay });
+  } else if (isDayBased) {
+    // 日額固定（例："1日"）：その日の稼働時間に関係なく、稼働した日数×基本給（1日あたりの額）を計上
+    const workDays = countUniqueWorkDates_(rows);
+    if (workDays > 0) {
+      items.push({ date: "", content: "運行代", qty: workDays, unit: "日", unitPrice: staff.basicPay });
+    }
   } else {
     basicHours = parseHoursToNumber_(unit);
     hasOverRate = !!staff.overRate;
@@ -644,8 +673,8 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
     }
   });
 
-  // ④ 時間超過分（時間単位かつ超過単価が設定されている場合のみ）
-  if (unit !== "月額固定" && hasOverRate && basicHours) {
+  // ④ 時間超過分（時間単位かつ超過単価が設定されている場合のみ。日額固定・月額固定は対象外）
+  if (unit !== "月額固定" && !isDayBased && hasOverRate && basicHours) {
     const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
       items.push({ date: "", content: "時間超過分" + overHours + "時間", qty: overHours, unit: "時間", unitPrice: staff.overRate });
@@ -686,59 +715,43 @@ function writeInvoiceLineItems_(sheet, items, startRow, dateStr) {
 // D39：8%対象の消費税／F39：8%対象の金額（税抜）
 // Q36：小計／Q37：消費税／Q38：合計
 // B11：ご請求金額（税込）＝合計と同じ値を直接書き込む
-// startRow：明細の書き込み開始行（税込原本とのズレ調整で、最後の課税明細のQ列を直接上書きするために必要）
-function writeInvoiceSummary_(sheet, items, startRow) {
+//
+// 計算の考え方（依頼者の顧問専門家に確認済み）：
+//   ① まず「合計（税込）」＝各明細の税込原本金額の合計を確定する
+//      ・taxAmountOverride がある項目（フォーム入力が税込）→ その原本金額（税抜金額＋override）をそのまま使う
+//      ・無い項目（マスタに税抜で入力）→ 税抜金額＋その場でfloor計算した消費税＝税込換算額を使う
+//   ② 消費税は「①の合計」から、税率ごとに1回だけ算出する：消費税 = floor(合計 × 税率 ÷ (1+税率))
+//   ③ 小計（税抜）= 合計 − 消費税
+// この順序（合計→消費税→小計）で計算するため、小計・消費税を足すと必ず合計に戻り、
+// 明細1行だけを調整するような後処理は不要になる
+function writeInvoiceSummary_(sheet, items) {
   const amounts = items.map(function(item) { return (item.qty || 0) * (Math.round(item.unitPrice) || 0); });
 
-  let net10 = 0, net8 = 0, netOther = 0;
+  // 税率ごとの「税込換算額」の合計と、非課税分（netOther）を求める
+  let gross10 = 0, gross8 = 0, netOther = 0;
   items.forEach(function(item, i) {
     const amount = amounts[i];
-    if (item.taxRate === 0.1) {
-      net10 += amount;
-    } else if (item.taxRate === 0.08) {
-      net8 += amount;
+    if (item.taxRate === 0.1 || item.taxRate === 0.08) {
+      const grossAmount = (item.taxAmountOverride !== undefined)
+        ? amount + item.taxAmountOverride                 // 税込入力の原本金額そのまま
+        : amount + Math.floor(amount * item.taxRate);      // 税抜入力→税込換算
+      if (item.taxRate === 0.1) { gross10 += grossAmount; } else { gross8 += grossAmount; }
     } else {
       netOther += amount; // 登録番号なしスタッフ等、非課税扱い（税率未設定）
     }
   });
 
-  // インボイス制度のルールに則り、消費税の端数処理は「税率ごとに請求書1枚につき1回」だけ行う
-  const tax10 = Math.floor(net10 * 0.10);
-  const tax8  = Math.floor(net8  * 0.08);
+  // 消費税は税率ごとの税込合計から1回だけ算出（切り捨て）：税率10% → 消費税 = floor(税込合計 ÷ 11)
+  const tax10 = Math.floor(gross10 / 11);
+  const tax8  = Math.floor(gross8 * 8 / 108);
   const taxTotal = tax10 + tax8;
 
-  // 税込で入力された項目の原本金額（税込→税抜変換時に確定した消費税＝taxAmountOverrideを使う）と、
-  // 上記の「税率ごとに1回だけ」ルールで出した合計との差額を求める
-  // ※ 通常は税込⇔税抜の変換誤差でごくわずか（±1円程度）に収まる想定
-  let idealGrandTotal = 0;
-  items.forEach(function(item, i) {
-    const amount = amounts[i];
-    if (item.taxAmountOverride !== undefined) {
-      idealGrandTotal += amount + item.taxAmountOverride;
-    } else if (item.taxRate === 0.1 || item.taxRate === 0.08) {
-      idealGrandTotal += amount + Math.floor(amount * item.taxRate);
-    } else {
-      idealGrandTotal += amount;
-    }
-  });
+  // 小計（税抜）＝ 税込合計 − 消費税（この順序で計算するので、必ず「小計＋消費税＝税込合計」になる）
+  const net10 = gross10 - tax10;
+  const net8  = gross8  - tax8;
 
-  let subtotal   = net10 + net8 + netOther;
-  let grandTotal = subtotal + taxTotal;
-  const diff = idealGrandTotal - grandTotal;
-
-  // ズレがある場合、最後の課税対象明細1行のQ列（金額）だけを直接上書きして吸収する
-  // （L×Nの数式ではなく、その行だけ確定値を書き込む。他の行・単価は一切変更しない）
-  if (diff !== 0 && startRow !== undefined) {
-    let targetIdx = -1;
-    for (let i = items.length - 1; i >= 0; i--) {
-      if (items[i].taxRate === 0.1 || items[i].taxRate === 0.08) { targetIdx = i; break; }
-    }
-    if (targetIdx !== -1) {
-      sheet.getRange(startRow + targetIdx, 17).setValue(amounts[targetIdx] + diff); // Q列を確定値で上書き
-      subtotal   += diff;
-      grandTotal += diff;
-    }
-  }
+  const subtotal   = net10 + net8 + netOther;
+  const grandTotal = subtotal + taxTotal;
 
   sheet.getRange("F38").setValue(net10);
   sheet.getRange("F39").setValue(net8);
@@ -1077,7 +1090,7 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
       : buildStaffInvoiceLineItems_(masterRecord, rows, dcm, displayValues);
     const dateStr = getFirstDayOfMonthStr_(targetLabel); // すべて対象月の1日
     writeInvoiceLineItems_(sheet, items, startRow, dateStr);
-    writeInvoiceSummary_(sheet, items, startRow); // 小計・消費税・合計はテンプレート数式を使わずGAS側で直接計算
+    writeInvoiceSummary_(sheet, items); // 小計・消費税・合計はテンプレート数式を使わずGAS側で直接計算
     Logger.log("    明細書き込み完了：type=" + type + "、" + items.length + " 件");
     return;
   }
