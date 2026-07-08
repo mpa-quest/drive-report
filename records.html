@@ -7,7 +7,6 @@
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>運行記録照会</title>
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -26,9 +25,95 @@
       position: sticky;
       top: 0;
       z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
     }
     header h1 { font-size: 17px; font-weight: 700; letter-spacing: 0.05em; }
     header p  { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+
+    .logout-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: white;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,0.25); }
+
+    /* ── パスワード画面 ── */
+    .auth-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 60px);
+      padding: 20px;
+    }
+    .auth-box {
+      background: white;
+      border-radius: 16px;
+      padding: 32px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .auth-box .auth-title {
+      font-size: 16px;
+      font-weight: 700;
+      text-align: center;
+      color: #1A6B3C;
+    }
+    .auth-box .auth-desc {
+      font-size: 13px;
+      color: #6B7280;
+      text-align: center;
+      line-height: 1.6;
+    }
+    .auth-box input {
+      width: 100%;
+      border: 1.5px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 15px;
+      font-family: inherit;
+      color: #2D2D2D;
+      transition: border-color 0.15s;
+    }
+    .auth-box input:focus {
+      outline: none;
+      border-color: #1A6B3C;
+    }
+    .auth-box .auth-btn {
+      width: 100%;
+      background: #1A6B3C;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .auth-box .auth-btn:active   { background: #145530; }
+    .auth-box .auth-btn:disabled { background: #9CA3AF; cursor: not-allowed; }
+    .auth-error {
+      font-size: 13px;
+      color: #DC2626;
+      text-align: center;
+      display: none;
+    }
+    .auth-error.visible { display: block; }
 
     /* ── フィルターパネル ── */
     .filter-panel {
@@ -249,9 +334,26 @@
 <body>
 
 <header>
-  <h1>📋 運行記録照会</h1>
-  <p>会社またはスタッフ・月を選択して運行記録を確認</p>
+  <div>
+    <h1>📋 運行記録照会</h1>
+    <p>会社またはスタッフ・月を選択して運行記録を確認</p>
+  </div>
+  <button class="logout-btn" id="logoutBtn" style="display:none">ログアウト</button>
 </header>
+
+<!-- パスワード認証画面 -->
+<div class="auth-wrap" id="authScreen">
+  <div class="auth-box">
+    <div class="auth-title">🔐 パスワード認証</div>
+    <div class="auth-desc">管理者用パスワードを入力してください</div>
+    <input type="password" id="passwordInput" placeholder="パスワード" />
+    <div class="auth-error" id="authError">パスワードが正しくありません</div>
+    <button class="auth-btn" id="authBtn">ログイン</button>
+  </div>
+</div>
+
+<!-- メインコンテンツ（認証後） -->
+<div id="mainContent" style="display:none">
 
 <!-- タブ -->
 <div class="tab-wrap">
@@ -359,8 +461,9 @@
   </table>
 </div>
 
+</div> <!-- /#mainContent -->
+
 <script>
-  const LIFF_ID = "2010522430-p0HsEEYo"; // records.html専用LIFF ID
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz_RFBDLwP8fm3QaQNvo_d4wZtWF4UrV3Rz7tCTkTCLKm5IUct_vp_x-i76vbAGnuwIbg/exec";
   const CACHE_TTL = 60 * 60 * 1000; // 1時間
 
@@ -403,17 +506,58 @@
     selMonth.appendChild(opt);
   }
 
-  // ── LIFF 初期化 → 会社マスタ取得 ──
-  liff.init({ liffId: LIFF_ID })
-    .then(async () => {
-      if (!liff.isLoggedIn()) { liff.login(); return; }
-      await loadCompanies();
-    })
-    .catch(err => {
-      console.error("LIFF init error", err);
-      // LIFF外でも動作できるようフォールバック
-      loadCompanies();
-    });
+  // ── パスワード認証（管理者共通パスワード）──
+  const SESSION_KEY = "records_admin_auth";
+
+  function showMain() {
+    document.getElementById("authScreen").style.display  = "none";
+    document.getElementById("mainContent").style.display = "block";
+    document.getElementById("logoutBtn").style.display   = "inline-block";
+    loadCompanies();
+  }
+
+  // sessionStorageに認証済みフラグがあれば、パスワード再入力なしでそのまま表示
+  if (sessionStorage.getItem(SESSION_KEY) === "1") {
+    showMain();
+  }
+
+  document.getElementById("passwordInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("authBtn").click();
+  });
+
+  document.getElementById("authBtn").addEventListener("click", async () => {
+    const password = document.getElementById("passwordInput").value.trim();
+    if (!password) return;
+
+    const authBtn   = document.getElementById("authBtn");
+    const authError = document.getElementById("authError");
+    authBtn.disabled = true;
+    authError.classList.remove("visible");
+
+    try {
+      const res  = await fetch(`${GAS_URL}?action=verifyAdmin&password=${encodeURIComponent(password)}`);
+      const data = await res.json();
+      if (data.verified) {
+        sessionStorage.setItem(SESSION_KEY, "1");
+        showMain();
+      } else {
+        authError.textContent = "パスワードが正しくありません";
+        authError.classList.add("visible");
+        document.getElementById("passwordInput").value = "";
+        document.getElementById("passwordInput").focus();
+      }
+    } catch (err) {
+      authError.textContent = "通信エラーが発生しました。再度お試しください";
+      authError.classList.add("visible");
+    } finally {
+      authBtn.disabled = false;
+    }
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    location.reload();
+  });
 
   async function loadCompanies() {
     try {
