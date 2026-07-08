@@ -16,6 +16,7 @@ function doGet(e) {
   if (action === "getRecordsByStaff")  { return getRecordsByStaff(e.parameter); }
   if (action === "getMyRecords")       { return getMyRecords(e.parameter); }
   if (action === "verifyCustomer")     { return verifyCustomer(e.parameter); }
+  if (action === "verifyAdmin")        { return verifyAdmin(e.parameter); }
   if (action === "getCustomerRecords") { return getCustomerRecords(e.parameter); }
   if (action === "getFormOptions")     { return getFormOptions(); }
 
@@ -566,6 +567,26 @@ function verifyCustomer(params) {
   }
 
   return jsonResponse({ verified: false, reason: "company not found" });
+}
+
+// =====================
+// records.html（管理者向け画面）の共通パスワード認証
+// スクリプトプロパティ「ADMIN_PASSWORD」と一致するかのみ判定する
+// =====================
+function verifyAdmin(params) {
+  const password = String(params.password || "").trim();
+  if (!password) {
+    return jsonResponse({ verified: false, reason: "invalid params" });
+  }
+
+  const stored = String(PropertiesService.getScriptProperties().getProperty("ADMIN_PASSWORD") || "").trim();
+  if (!stored) {
+    return jsonResponse({ verified: false, reason: "admin password not set" });
+  }
+  if (password === stored) {
+    return jsonResponse({ verified: true });
+  }
+  return jsonResponse({ verified: false, reason: "wrong password" });
 }
 
 // =====================
