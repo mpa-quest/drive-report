@@ -299,6 +299,13 @@ function submitReport(payload) {
     if (colMap[name] !== undefined) row[colMap[name]] = value;
   }
 
+  function parseDateValue_(val) {
+    if (!val) return "";
+    if (val instanceof Date) return val;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? val : d; // 日付として解釈できればDateオブジェクトで書き込む（セル側の表示形式が効くようにするため）
+  }
+
   setCol("タイムスタンプ", timestamp);
   setCol("会社",           companyLabel);
   setCol("日付",           payload.date);
@@ -310,7 +317,7 @@ function submitReport(payload) {
   setCol("到着",           payload.arrival);
   setCol("出発時間", payload.departureTime || "");
   setCol("到着時間", payload.arrivalTime   || "");
-  setCol("到着日",         payload.arrivalDate || payload.date);
+  setCol("到着日",         ""); // 実際の値は appendRow 後に日付型として明示的に設定する（下記参照）
   setCol("稼働時間",       payload.workingHours);
   setCol("利用者",         payload.passenger);
   setCol("利用目的",       payload.purpose);
@@ -346,6 +353,17 @@ function submitReport(payload) {
     sheet.getRange(lastRow2, col).setNumberFormat("@");
     sheet.getRange(lastRow2, col).setValue(val);
   });
+
+  // 到着日：セルの表示形式が新規行に引き継がれないため、日付型で書き込んだ上で明示的に「M/d」形式を設定する
+  const arrDateCol = colMap2["到着日"] + 1;
+  const arrDateVal = parseDateValue_(payload.arrivalDate);
+  const arrDateCell = sheet.getRange(lastRow2, arrDateCol);
+  if (arrDateVal) {
+    arrDateCell.setNumberFormat("M/d");
+    arrDateCell.setValue(arrDateVal);
+  } else {
+    arrDateCell.setValue("");
+  }
 
   // LINEに通知
   notifyLineGroup(payload);
