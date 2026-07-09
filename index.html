@@ -1277,8 +1277,9 @@
       departureTime: document.getElementById("departureTime").value,
       arrivalTime:   document.getElementById("arrivalTime").value,
       arrivalDate: (() => {
-        const d = new Date(document.getElementById("date").value);
         const offset = parseInt(document.getElementById("arrivalDayOffset").value) || 0;
+        if (offset === 0) return ""; // 同日の場合は到着日を送らない（空欄のままにする）
+        const d = new Date(document.getElementById("date").value);
         d.setDate(d.getDate() + offset);
         return d.toISOString().split("T")[0];
       })(),
