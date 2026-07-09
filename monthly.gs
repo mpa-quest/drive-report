@@ -464,8 +464,13 @@ function getMatchedWorkingMinutes_(r, dcm, displayValues) {
     const normalizedRowDate    = rowDateStr.replace(/-/g, "/");
     const normalizedTargetDate = formattedTargetDate.replace(/-/g, "/");
 
-    if ((targetTimestamp !== "" && rowTimestamp === targetTimestamp) ||
-        (normalizedRowDate === normalizedTargetDate && rowStaffId === String(r.staffId).trim())) {
+    // スタッフIDが一致していることを必須にした上で、タイムスタンプ一致 or 日付一致のどちらかで対象行を特定する
+    // （スタッフIDのチェックをせずタイムスタンプだけで一致判定すると、複数スタッフが同秒に送信した場合などに
+    //   別スタッフの稼働時間を誤って拾ってしまうため）
+    const staffMatches = rowStaffId === String(r.staffId).trim();
+    if (staffMatches &&
+        ((targetTimestamp !== "" && rowTimestamp === targetTimestamp) ||
+         normalizedRowDate === normalizedTargetDate)) {
       const whDisplay = String(displayValues[k][dcm["稼働時間"]] || "").trim();
       let workingMinutes = 0;
       const jpH = whDisplay.match(/(\d+)時間/);
@@ -489,6 +494,28 @@ function getTotalWorkedHours_(rows, dcm, displayValues) {
     totalMinutes += getMatchedWorkingMinutes_(r, dcm, displayValues);
   });
   return totalMinutes / 60;
+}
+
+// スタッフの時間超過分：basicHoursは「1日あたりの基準勤務時間」のため、
+// 月合計稼働時間から一括で引くのではなく、日ごとの稼働時間（同日複数レコードは合算）が
+// basicHoursを超えた分だけを日単位で積み上げて合計する
+// （例：基本時間9時間・6/4が11時間・6/17が10時間30分の場合 → 2時間＋1時間30分＝3時間30分）
+function getDailyOvertimeHours_(rows, dcm, displayValues, basicHours) {
+  const dailyMinutes = {};
+  (rows || []).forEach(function(r) {
+    if (!r.date) return;
+    const d = (r.date instanceof Date) ? r.date : new Date(r.date);
+    if (isNaN(d.getTime())) return;
+    const key = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy/MM/dd");
+    dailyMinutes[key] = (dailyMinutes[key] || 0) + getMatchedWorkingMinutes_(r, dcm, displayValues);
+  });
+  let overHoursTotal = 0;
+  Object.keys(dailyMinutes).forEach(function(key) {
+    const dayHours   = dailyMinutes[key] / 60;
+    const dayOverRaw = Math.max(0, dayHours - basicHours);
+    overHoursTotal += ceilToQuarterHour_(dayOverRaw); // 日ごとに15分単位で切り上げてから合算
+  });
+  return overHoursTotal;
 }
 
 // 超過時間の端数処理：15分単位で切り上げ
@@ -583,8 +610,11 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   });
 
   // ④ 時間超過分（超過単価が設定されている場合のみ）
+  // ※ 「専属」＝月間契約時間として月合計から算出／「スポット」＝日ごとの基準時間として日単位で積み上げる
   if (hasOverRate && basicHours) {
-    const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
+    const overHours = (company.category === "スポット")
+      ? getDailyOvertimeHours_(rows, dcm, displayValues, basicHours)
+      : ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
       baseItems.push({ date: "", content: "時間超過分" + formatHoursAsHM_(overHours), qty: overHours, unit: "時間", unitPrice: company.overRate });
     }
@@ -690,8 +720,9 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
   });
 
   // ④ 時間超過分（時間単位かつ超過単価が設定されている場合のみ。日額固定・月額固定は対象外）
+  // ※ basicHoursは「1日あたりの基準勤務時間」のため、日ごとの超過分を積み上げて合算する
   if (unit !== "月額固定" && !isDayBased && hasOverRate && basicHours) {
-    const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
+    const overHours = getDailyOvertimeHours_(rows, dcm, displayValues, basicHours);
     if (overHours > 0) {
       items.push({ date: "", content: "時間超過分" + formatHoursAsHM_(overHours), qty: overHours, unit: "時間", unitPrice: staff.overRate });
     }
