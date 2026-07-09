@@ -1113,12 +1113,6 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
   }
   Logger.log("    明細書き込み開始：type=" + type + "、開始行=" + startRow + "、件数=" + rows.length);
 
-  // 運行記録シートの「見た目の文字列」をそのまま取得するためにDisplayValuesを取得する
-  const props = PropertiesService.getScriptProperties();
-  const db = SpreadsheetApp.openById(props.getProperty("SPREADSHEET_ID"));
-  const recordSheet = db.getSheetByName("運行記録");
-  const displayValues = recordSheet.getDataRange().getDisplayValues();
-
   // ヘッダー名→列インデックスマップをループ外で1回だけ取得（パフォーマンス対策）
   // ※ startRow-1 がヘッダー行（テンプレートが複数行タイトルを持つ場合でも正しく取得できる）
   function buildColMap(targetSheet, headerRow) {
@@ -1128,7 +1122,6 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
     return map;
   }
   const kanriCm = (type === "kanri") ? buildColMap(sheet, startRow - 1) : {};
-  const dcm     = getColumnMapFromSheet(recordSheet); // 運行記録シートは1行目がヘッダー
 
   // お客様請求書・スタッフ請求書：日ごとの明細ではなく、運行代・時間超過分・立替費用の集計行を書き込む
   if (type === "company" || type === "staff") {
@@ -1146,70 +1139,26 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
     const row = startRow + idx;
     
     if (type === "kanri") {
-      let dispDepartureTime = r.departureTime;
-      let dispArrivalTime   = r.arrivalTime;
-      
-      // r.dateを「YYYY/MM/DD」形式の文字列に変換して型ミスマッチを防ぐ
-      let formattedTargetDate = "";
-      if (r.date instanceof Date) {
-        formattedTargetDate = Utilities.formatDate(r.date, Session.getScriptTimeZone(), "yyyy/MM/dd");
-      } else if (r.date) {
-        const d = new Date(r.date);
-        if (!isNaN(d.getTime())) {
-          formattedTargetDate = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy/MM/dd");
-        } else {
-          formattedTargetDate = String(r.date);
-        }
-      }
-
-      const targetTimestamp = r.timestamp ? String(r.timestamp).trim() : "";
-
-      // 元のシートの行を特定し「見かけ上の時間・稼働時間」を取得する（dcmはループ外で取得済み）
-      let matched = false;
-      let workingSerial = 0;
-      for (let k = 1; k < displayValues.length; k++) {
-        const rowTimestamp = displayValues[k][dcm["タイムスタンプ"]] ? String(displayValues[k][dcm["タイムスタンプ"]]).trim() : "";
-        const rowDateStr   = displayValues[k][dcm["日付"]]           ? String(displayValues[k][dcm["日付"]]).trim()           : "";
-        const rowStaffId   = displayValues[k][dcm["スタッフID"]]     ? String(displayValues[k][dcm["スタッフID"]]).trim()     : "";
-
-        const normalizedRowDate    = rowDateStr.replace(/-/g, "/");
-        const normalizedTargetDate = formattedTargetDate.replace(/-/g, "/");
-
-        if ((targetTimestamp !== "" && rowTimestamp === targetTimestamp) ||
-            (normalizedRowDate === normalizedTargetDate && rowStaffId === String(r.staffId).trim())) {
-          dispDepartureTime = displayValues[k][dcm["出発時間"]];
-          dispArrivalTime   = displayValues[k][dcm["到着時間"]];
-
-          // 稼働時間をdisplayValuesから取得（24時間超えも正しく取れる）
-          const whDisplay = String(displayValues[k][dcm["稼働時間"]] || "").trim();
-          let workingMinutes = 0;
-          // "X時間Y分" 形式
-          const jpH = whDisplay.match(/(\d+)時間/);
-          const jpM = whDisplay.match(/(\d+)分/);
-          if (jpH || jpM) {
-            workingMinutes = (jpH ? parseInt(jpH[1]) : 0) * 60 + (jpM ? parseInt(jpM[1]) : 0);
-          } else {
-            // "H:MM" / "HH:MM" / "H:MM:SS" 形式（24時間超えも対応）
-            const hm = whDisplay.match(/^(\d+):(\d{2})/);
-            if (hm) workingMinutes = parseInt(hm[1]) * 60 + parseInt(hm[2]);
-          }
-          workingSerial = workingMinutes / (24 * 60);
-
-          matched = true;
-          break;
-        }
-      }
-      if (!matched) {
-        Logger.log("    ⚠️ 元レコードが特定できませんでした：staffId=" + r.staffId + "、date=" + formattedTargetDate);
-      }
+      // 出発時間・到着時間・稼働時間は、シートを再検索するのではなく各行自身の値を直接使う
+      // （再検索方式は、同一スタッフが同日に複数レコードを持つ場合に別レコードの値を誤って
+      //   拾ってしまう不具合があったため廃止した。運行代の稼働時間集計と同じ考え方）
+      // ※ Dateオブジェクトや生の値をそのままsetValueすると、セル側の書式次第で
+      //   異常な数値（マイナスや桁違いの値）として表示されることがあるため、
+      //   分単位に変換してから明示的に時刻書式(H:mm)を設定する
+      const departureSerial = r.departureTime ? parseWorkingHoursValue_(r.departureTime) / (24 * 60) : "";
+      const arrivalSerial    = r.arrivalTime   ? parseWorkingHoursValue_(r.arrivalTime)   / (24 * 60) : "";
+      const workingSerial    = parseWorkingHoursValue_(r.workingHours) / (24 * 60);
 
       // 日付・到着日をJST文字列に変換
+      // ※ 到着日が未入力の場合、GAS側で日付型セルの初期値（Google/Excelの日付シリアル0＝1899/12/30）を
+      //   そのまま拾ってしまうことがあるため、明らかにシリアル0由来の日付は空欄として扱う
       const tz = Session.getScriptTimeZone();
       function toDateStr(val) {
         if (!val) return "";
-        if (val instanceof Date) return Utilities.formatDate(val, tz, "yyyy/MM/dd");
-        const d = new Date(val);
-        return isNaN(d.getTime()) ? String(val) : Utilities.formatDate(d, tz, "yyyy/MM/dd");
+        const d = (val instanceof Date) ? val : new Date(val);
+        if (isNaN(d.getTime())) return String(val);
+        if (d.getFullYear() <= 1899) return ""; // 日付シリアル0（1899/12/30付近）＝実質未入力
+        return Utilities.formatDate(d, tz, "yyyy/MM/dd");
       }
       const displayDate        = toDateStr(r.date);
       const displayArrivalDate = toDateStr(r.arrivalDate);
@@ -1231,9 +1180,9 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
         ["出発",         r.departure],
         ["行き先",       r.destination],
         ["到着",         r.arrival],
-        ["出発時間",     dispDepartureTime],
+        ["出発時間",     departureSerial],
         ["到着日",       displayArrivalDate],
-        ["到着時間",     dispArrivalTime],
+        ["到着時間",     arrivalSerial],
         ["稼働時間",     workingSerial],
         ["利用者",       r.passenger],
         ["利用目的",     r.purpose],
@@ -1254,7 +1203,11 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
         sheet.getRange(row, colIdx).setValue(pair[1]);
       });
 
-      // 稼働時間の表示形式を[h]:mmに設定
+      // 出発時間・到着時間は「時刻（H:mm）」、稼働時間は「経過時間（[h]:mm）」の表示形式を明示的に設定する
+      const depColIdx = getCol("出発時間");
+      if (depColIdx !== -1) sheet.getRange(row, depColIdx).setNumberFormat("H:mm");
+      const arrColIdx = getCol("到着時間");
+      if (arrColIdx !== -1) sheet.getRange(row, arrColIdx).setNumberFormat("H:mm");
       const whColIdx = getCol("稼働時間");
       if (whColIdx !== -1) sheet.getRange(row, whColIdx).setNumberFormat("[h]:mm");
     }
