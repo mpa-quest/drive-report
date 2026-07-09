@@ -222,7 +222,7 @@ function getStaffMap(db) {
     const noteText        = col(row, ["備考", "例外"]);
     const billingPattern = String(col(row, ["請求パターン"]) || "").trim();
 
-    const companyIdsRaw = col(row, ["担当会社"], 3);
+    const companyIdsRaw = col(row, ["担当会社ID", "担当会社"], 3);
 
     // 「請求書作成」列：値が「不要」の場合のみスキップし、それ以外（空欄含む）は通常通り作成する
     const invoiceGeneration = String(col(row, ["請求書作成"]) || "").trim();
@@ -230,7 +230,7 @@ function getStaffMap(db) {
     map[staffId] = {
       lineUserId:  col(row, ["LINEユーザーID"], 0),
       staffId:     staffId,
-      staffName:   col(row, ["名前"], 2),
+      staffName:   col(row, ["運行者名", "名前"], 2),
       companyIds:  companyIdsRaw ? String(companyIdsRaw).split(",").map(s => s.trim()) : [],
       email:       col(row, ["メール"], 4),
       regNumber:   col(row, ["登録番号"], 5),
@@ -241,7 +241,8 @@ function getStaffMap(db) {
       branchName:  col(row, ["支店名"], 10),
       accountNum:  col(row, ["口座番号"], 11),
       basicPay:    Number(col(row, ["基本給"])) || 0,
-      payUnit:     col(row, ["単位"]),        // "1時間" 等の時間単位、または "月額固定"
+      payUnit:     col(row, ["単位"]),        // "月額固定" / "1日" / "時給" / "月間時間制"
+      basicHours:  col(row, ["基本時間"]),    // "月間時間制"のときだけ使う月間の基準時間（例："170時間"）
       overRate:    Number(col(row, ["超過単価"])) || 0,
       billingPattern: billingPattern,
       note:        noteText || "",           // 備考（参考メモ。請求書生成の可否には使わない）
@@ -254,7 +255,9 @@ function getStaffMap(db) {
 // =====================
 // スタッフの月給を計算
 //   ・単位が「月額固定」→ 実稼働時間に関係なく基本給そのまま支給（超過なし）
-//   ・単位が「◯時間」→ その時間までは基本給、超えた分は超過単価×超過時間を加算
+//   ・単位が「1日」→ 稼働した日数×基本給（1日あたりの額）
+//   ・単位が「時給」→ 基本給（＝時給単価）×実稼働時間（超過という概念がない）
+//   ・単位が「月間時間制」→ 基本時間（月間の基準時間）までは基本給、超えた分は超過単価×超過時間を加算
 //     （超過単価が空欄の場合は会社マスタと同様、単価（基本給÷基本時間）×実稼働時間の実額制）
 // ※ まだ請求書明細への書き込みには接続していません
 // =====================
@@ -264,14 +267,16 @@ function calculateStaffFee_(staff, totalWorkedHours) {
   const unit = String(staff.payUnit || "").trim();
   const basicPay = staff.basicPay || 0;
 
-  // 月額固定 → 実稼働時間に関係なく基本給そのまま（超過なし）
   if (unit === "月額固定") {
     return basicPay;
   }
+  if (unit === "時給") {
+    return basicPay * totalWorkedHours;
+  }
 
-  const basicHours = parseHoursToNumber_(unit);
+  const basicHours = parseHoursToNumber_(staff.basicHours);
   if (!basicHours) {
-    Logger.log("  ⚠️ 単位から基本時間を判定できないため給与計算不可：" + staff.staffId);
+    Logger.log("  ⚠️ 「基本時間」が未設定のため給与計算不可：" + staff.staffId);
     return null;
   }
 
@@ -443,55 +448,34 @@ function parseHoursToNumber_(hoursText) {
 // 請求書明細（基本料金・超過時間・立替費用）を組み立てるための共通ヘルパー
 // =====================
 
-// 運行記録シートの表示値から、該当レコード1件分の実稼働時間（分）を取得
-// ※ writeDetailRows（kanri）内のマッチングロジックと同等
-function getMatchedWorkingMinutes_(r, dcm, displayValues) {
-  const tz = Session.getScriptTimeZone();
-  let formattedTargetDate = "";
-  if (r.date instanceof Date) {
-    formattedTargetDate = Utilities.formatDate(r.date, tz, "yyyy/MM/dd");
-  } else if (r.date) {
-    const d = new Date(r.date);
-    formattedTargetDate = isNaN(d.getTime()) ? String(r.date) : Utilities.formatDate(d, tz, "yyyy/MM/dd");
+// 稼働時間の値（テキスト「8時間30分」／「8:30」形式、またはExcelの時刻型セル）を分（数値）に変換する
+// ※ 以前はシートを再検索して対象行を「タイムスタンプ or 日付＋スタッフID一致」で特定していたが、
+//    同一スタッフが同日に複数レコードを持つ場合に誤った行にマッチしてしまう不具合があったため、
+//    各行オブジェクト（r.workingHours）が自分自身の稼働時間を直接保持している値をそのままパースする方式に変更した
+function parseWorkingHoursValue_(raw) {
+  if (raw instanceof Date) {
+    const tz = Session.getScriptTimeZone();
+    const h = parseInt(Utilities.formatDate(raw, tz, "H"), 10);
+    const m = parseInt(Utilities.formatDate(raw, tz, "m"), 10);
+    return h * 60 + m;
   }
-  const targetTimestamp = r.timestamp ? String(r.timestamp).trim() : "";
-
-  for (let k = 1; k < displayValues.length; k++) {
-    const rowTimestamp = displayValues[k][dcm["タイムスタンプ"]] ? String(displayValues[k][dcm["タイムスタンプ"]]).trim() : "";
-    const rowDateStr   = displayValues[k][dcm["日付"]]           ? String(displayValues[k][dcm["日付"]]).trim()           : "";
-    const rowStaffId   = displayValues[k][dcm["スタッフID"]]     ? String(displayValues[k][dcm["スタッフID"]]).trim()     : "";
-
-    const normalizedRowDate    = rowDateStr.replace(/-/g, "/");
-    const normalizedTargetDate = formattedTargetDate.replace(/-/g, "/");
-
-    // スタッフIDが一致していることを必須にした上で、タイムスタンプ一致 or 日付一致のどちらかで対象行を特定する
-    // （スタッフIDのチェックをせずタイムスタンプだけで一致判定すると、複数スタッフが同秒に送信した場合などに
-    //   別スタッフの稼働時間を誤って拾ってしまうため）
-    const staffMatches = rowStaffId === String(r.staffId).trim();
-    if (staffMatches &&
-        ((targetTimestamp !== "" && rowTimestamp === targetTimestamp) ||
-         normalizedRowDate === normalizedTargetDate)) {
-      const whDisplay = String(displayValues[k][dcm["稼働時間"]] || "").trim();
-      let workingMinutes = 0;
-      const jpH = whDisplay.match(/(\d+)時間/);
-      const jpM = whDisplay.match(/(\d+)分/);
-      if (jpH || jpM) {
-        workingMinutes = (jpH ? parseInt(jpH[1]) : 0) * 60 + (jpM ? parseInt(jpM[1]) : 0);
-      } else {
-        const hm = whDisplay.match(/^(\d+):(\d{2})/);
-        if (hm) workingMinutes = parseInt(hm[1]) * 60 + parseInt(hm[2]);
-      }
-      return workingMinutes;
-    }
+  const s = String(raw || "").trim();
+  if (!s) return 0;
+  const jpH = s.match(/(\d+)時間/);
+  const jpM = s.match(/(\d+)分/);
+  if (jpH || jpM) {
+    return (jpH ? parseInt(jpH[1], 10) : 0) * 60 + (jpM ? parseInt(jpM[1], 10) : 0);
   }
+  const hm = s.match(/^(\d+):(\d{2})/);
+  if (hm) return parseInt(hm[1], 10) * 60 + parseInt(hm[2], 10);
   return 0;
 }
 
 // 明細行（rows）の合計稼働時間を時間（小数）で算出
-function getTotalWorkedHours_(rows, dcm, displayValues) {
+function getTotalWorkedHours_(rows) {
   let totalMinutes = 0;
   rows.forEach(function(r) {
-    totalMinutes += getMatchedWorkingMinutes_(r, dcm, displayValues);
+    totalMinutes += parseWorkingHoursValue_(r.workingHours);
   });
   return totalMinutes / 60;
 }
@@ -500,14 +484,14 @@ function getTotalWorkedHours_(rows, dcm, displayValues) {
 // 月合計稼働時間から一括で引くのではなく、日ごとの稼働時間（同日複数レコードは合算）が
 // basicHoursを超えた分だけを日単位で積み上げて合計する
 // （例：基本時間9時間・6/4が11時間・6/17が10時間30分の場合 → 2時間＋1時間30分＝3時間30分）
-function getDailyOvertimeHours_(rows, dcm, displayValues, basicHours) {
+function getDailyOvertimeHours_(rows, basicHours) {
   const dailyMinutes = {};
   (rows || []).forEach(function(r) {
     if (!r.date) return;
     const d = (r.date instanceof Date) ? r.date : new Date(r.date);
     if (isNaN(d.getTime())) return;
     const key = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy/MM/dd");
-    dailyMinutes[key] = (dailyMinutes[key] || 0) + getMatchedWorkingMinutes_(r, dcm, displayValues);
+    dailyMinutes[key] = (dailyMinutes[key] || 0) + parseWorkingHoursValue_(r.workingHours);
   });
   let overHoursTotal = 0;
   Object.keys(dailyMinutes).forEach(function(key) {
@@ -558,13 +542,13 @@ function getFirstDayOfMonthStr_(targetLabel) {
 // 会社向け請求書の明細行（運行代・交通費・立替費用・時間超過分）を組み立てる
 // ※ 会社マスタの基本料金・超過単価は税抜で入力されている前提
 // ※ 表示順：運行代 → 交通費 → 立替費用（ガソリン代・燃料代・パーキング代） → 時間超過分
-function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
+function buildCompanyInvoiceLineItems_(company, rows) {
   const items = [];
   if (!company) return items;
 
   const applyBasicFee = shouldApplyBasicFee_(company, rows);
   const basicHours    = parseHoursToNumber_(company.basicHours);
-  const totalHours    = getTotalWorkedHours_(rows, dcm, displayValues);
+  const totalHours    = getTotalWorkedHours_(rows);
   const hasOverRate   = !!company.overRate;
   const pattern       = String(company.billingPattern || "").trim();
   const isConsolidated = pattern === BILLING_PATTERN.CONSOLIDATED; // 会社：1行にまとめる
@@ -613,7 +597,7 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
   // ※ 「専属」＝月間契約時間として月合計から算出／「スポット」＝日ごとの基準時間として日単位で積み上げる
   if (hasOverRate && basicHours) {
     const overHours = (company.category === "スポット")
-      ? getDailyOvertimeHours_(rows, dcm, displayValues, basicHours)
+      ? getDailyOvertimeHours_(rows, basicHours)
       : ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
       baseItems.push({ date: "", content: "時間超過分" + formatHoursAsHM_(overHours), qty: overHours, unit: "時間", unitPrice: company.overRate });
@@ -655,34 +639,34 @@ function buildCompanyInvoiceLineItems_(company, rows, dcm, displayValues) {
 // スタッフ向け請求書の明細行（運行代・交通費・立替費用・時間超過分）を組み立てる
 // ※ スタッフマスタの基本給・超過単価も会社マスタと同様、税抜で入力されている前提
 // ※ 表示順：運行代 → 交通費 → 立替費用（ガソリン代・燃料代・パーキング代） → 時間超過分
-function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
+function buildStaffInvoiceLineItems_(staff, rows) {
   const items = [];
   if (!staff) return items;
 
-  const unit       = String(staff.payUnit || "").trim();
-  const totalHours = getTotalWorkedHours_(rows, dcm, displayValues);
-  let basicHours   = null;
-  let hasOverRate  = false;
-  // 「1日」等、時間ではなく日単位で基本給が決まっているかどうか（"時間"を含まず"日"を含む単位）
-  const isDayBased = /日/.test(unit) && !/時間/.test(unit) && unit !== "月額固定";
+  const unit        = String(staff.payUnit || "").trim();
+  const totalHours  = getTotalWorkedHours_(rows);
+  const basicHours  = parseHoursToNumber_(staff.basicHours); // 「基本時間」列。「月間時間制」のときだけ使う月間の基準時間
+  const hasOverRate = !!staff.overRate;
 
   // 登録番号（インボイス発行事業者番号）がある場合のみ課税対象（10%）。
   // 登録番号が空欄＝免税事業者扱いのため、税率は0%にする（消費税0円、小計＝合計になる）
   const isTaxable = !!staff.regNumber;
 
   // ① 運行代
+  //   月額固定　　　：実稼働時間に関係なく基本給そのまま（超過なし）
+  //   1日　　　　　：稼働した日数（ユニーク日数）×基本給（1日あたりの額）
+  //   時給　　　　　：基本給欄がそのまま時給単価。常に単価×実働時間（超過という概念がない）
+  //   月間時間制　　：会社マスタの「専属」と同じ考え方。基本時間（月間の基準時間）を超えた分だけ④で加算
   if (unit === "月額固定") {
-    // 実稼働時間に関係なく基本給そのまま（超過なし）
     items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: staff.basicPay });
-  } else if (isDayBased) {
-    // 日額固定（例："1日"）：その日の稼働時間に関係なく、稼働した日数×基本給（1日あたりの額）を計上
+  } else if (unit === "1日") {
     const workDays = countUniqueWorkDates_(rows);
     if (workDays > 0) {
       items.push({ date: "", content: "運行代", qty: workDays, unit: "日", unitPrice: staff.basicPay });
     }
-  } else {
-    basicHours = parseHoursToNumber_(unit);
-    hasOverRate = !!staff.overRate;
+  } else if (unit === "時給") {
+    items.push({ date: "", content: "運行代", qty: totalHours, unit: "時間", unitPrice: staff.basicPay });
+  } else if (unit === "月間時間制") {
     if (basicHours) {
       if (!hasOverRate) {
         items.push({ date: "", content: "運行代", qty: totalHours, unit: "時間", unitPrice: staff.basicPay / basicHours });
@@ -690,8 +674,10 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
         items.push({ date: "", content: "運行代", qty: 1, unit: "式", unitPrice: staff.basicPay });
       }
     } else {
-      Logger.log("  ⚠️ 単位から基本時間を判定できないため給与明細を計算できません：" + staff.staffId);
+      Logger.log("  ⚠️ 「基本時間」が未設定のため月間時間制の給与明細を計算できません：" + staff.staffId);
     }
+  } else {
+    Logger.log("  ⚠️ 未知の「単位」のため給与明細を計算できません：" + staff.staffId + "（単位：" + unit + "）");
   }
 
   // ② 交通費（電車通勤）：会社クレカ払いの場合は対象外
@@ -719,10 +705,10 @@ function buildStaffInvoiceLineItems_(staff, rows, dcm, displayValues) {
     }
   });
 
-  // ④ 時間超過分（時間単位かつ超過単価が設定されている場合のみ。日額固定・月額固定は対象外）
-  // ※ basicHoursは「1日あたりの基準勤務時間」のため、日ごとの超過分を積み上げて合算する
-  if (unit !== "月額固定" && !isDayBased && hasOverRate && basicHours) {
-    const overHours = getDailyOvertimeHours_(rows, dcm, displayValues, basicHours);
+  // ④ 時間超過分（月間時間制かつ超過単価が設定されている場合のみ）
+  // ※ 会社マスタの「専属」と同じく月間契約時間として、月合計から1回だけ算出する
+  if (unit === "月間時間制" && hasOverRate && basicHours) {
+    const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
       items.push({ date: "", content: "時間超過分" + formatHoursAsHM_(overHours), qty: overHours, unit: "時間", unitPrice: staff.overRate });
     }
@@ -1147,8 +1133,8 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
   // お客様請求書・スタッフ請求書：日ごとの明細ではなく、運行代・時間超過分・立替費用の集計行を書き込む
   if (type === "company" || type === "staff") {
     const items = (type === "company")
-      ? buildCompanyInvoiceLineItems_(masterRecord, rows, dcm, displayValues)
-      : buildStaffInvoiceLineItems_(masterRecord, rows, dcm, displayValues);
+      ? buildCompanyInvoiceLineItems_(masterRecord, rows)
+      : buildStaffInvoiceLineItems_(masterRecord, rows);
     const dateStr = getFirstDayOfMonthStr_(targetLabel); // すべて対象月の1日
     writeInvoiceLineItems_(sheet, items, startRow, dateStr);
     writeInvoiceSummary_(sheet, items); // 小計・消費税・合計はテンプレート数式を使わずGAS側で直接計算
