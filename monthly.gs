@@ -939,7 +939,7 @@ function generateCompanyDocs(records, companyMap, targetLabel, targetYear, targe
 
     // A1セルの {{会社名}} を置換（「{{会社名}}様　運行管理表」という形式）
     const a1Val = kanriSheet.getRange("A1").getValue();
-    kanriSheet.getRange("A1").setValue(String(a1Val).replace("{{会社名}}", company.companyName + " 御中"));
+    kanriSheet.getRange("A1").setValue(String(a1Val).replace("{{会社名}}", company.companyName));
 
     // 月を書き込み（D1セル）
     const monthNum = parseInt(targetLabel.replace(/\d+年(\d+)月/, "$1"));
@@ -961,7 +961,7 @@ function generateCompanyDocs(records, companyMap, targetLabel, targetYear, targe
     const invoiceSS    = SpreadsheetApp.openById(invoiceCopy.getId());
     const invoiceSheet = invoiceSS.getSheetByName("お客様請求書");
 
-    replaceInSheet(invoiceSheet, "{{会社名}}",   company.companyName);
+    replaceInSheet(invoiceSheet, "{{会社名}}",   company.companyName + " 御中");
     replaceInSheet(invoiceSheet, "{{発行日}}",   issueDate);
     replaceInSheet(invoiceSheet, "{{請求番号}}", companyId + "_" + invoiceMonthKey + "_00");
 
