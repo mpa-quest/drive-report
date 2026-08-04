@@ -338,6 +338,7 @@
     <h1>📋 運行記録照会</h1>
     <p>会社またはスタッフ・月を選択して運行記録を確認</p>
   </div>
+  <button class="logout-btn" id="refreshBtn" style="display:none">🔄 会社・スタッフ一覧を更新</button>
   <button class="logout-btn" id="logoutBtn" style="display:none">ログアウト</button>
 </header>
 
@@ -513,6 +514,7 @@
     document.getElementById("authScreen").style.display  = "none";
     document.getElementById("mainContent").style.display = "block";
     document.getElementById("logoutBtn").style.display   = "inline-block";
+    document.getElementById("refreshBtn").style.display  = "inline-block";
     loadCompanies();
   }
 
@@ -557,6 +559,26 @@
   document.getElementById("logoutBtn").addEventListener("click", () => {
     sessionStorage.removeItem(SESSION_KEY);
     location.reload();
+  });
+
+  document.getElementById("refreshBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("refreshBtn");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "更新中...";
+    localStorage.removeItem("cache_companies");
+    localStorage.removeItem("cache_staffList");
+    try {
+      await Promise.all([loadCompanies(), loadStaff()]);
+      btn.textContent = "✅ 更新しました";
+    } catch (e) {
+      btn.textContent = "⚠️ 更新に失敗しました";
+    } finally {
+      setTimeout(() => {
+        btn.textContent = originalLabel;
+        btn.disabled = false;
+      }, 2000);
+    }
   });
 
   async function loadCompanies() {
