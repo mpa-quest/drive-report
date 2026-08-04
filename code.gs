@@ -44,25 +44,44 @@ function registerStaff(payload) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName("スタッフマスタ");
   const data  = sheet.getDataRange().getValues();
+  const cm    = getColumnMap(sheet);
 
-  // 重複チェック
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === payload.lineUserId) {
-      return jsonResponse({ success: false, reason: "already registered" });
-    }
-  }
-
-  // スタッフIDを自動付番（E + 最終行 を4桁ゼロ埋め）
-  const lastRow = sheet.getLastRow();
-  const staffId = "E" + String(lastRow).padStart(4, "0");
+  const colLineUserId = cm["LINEユーザーID"] !== undefined ? cm["LINEユーザーID"] : 0;
+  const colStaffId    = cm["スタッフID"]     !== undefined ? cm["スタッフID"]     : 1;
+  const colName       = cm["名前"]           !== undefined ? cm["名前"]           : 2;
 
   // 「姓　名」（全角スペース区切り）に整形して1つの氏名として保存する
   // ※ monthly.gs 側の extractSurname_ 等、全角スペース区切りの姓名を前提にした処理と揃える
   const staffName = String(payload.staffSurname || "").trim() + "\u3000" + String(payload.staffGivenName || "").trim();
 
+  // 重複チェック（同じLINEユーザーIDが既に登録済みなら弾く）
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][colLineUserId] === payload.lineUserId) {
+      return jsonResponse({ success: false, reason: "already registered" });
+    }
+  }
+
+  // 氏名照合：管理者が事前入力した行（LINEユーザーID未設定）で氏名が一致する行があれば、
+  // 新規行を追加せずその行にLINEユーザーIDを書き込んで紐付ける
+  for (let i = 1; i < data.length; i++) {
+    const existingLineUserId = String(data[i][colLineUserId] || "").trim();
+    const existingName       = String(data[i][colName] || "").trim();
+
+    if (existingLineUserId === "" && existingName === staffName) {
+      sheet.getRange(i + 1, colLineUserId + 1).setValue(payload.lineUserId);
+      const staffId = data[i][colStaffId];
+      return jsonResponse({ success: true, staffId, staffName, linked: true });
+    }
+  }
+
+  // 一致する既存行がなければ、従来通り新規行として追加
+  // スタッフIDを自動付番（E + 最終行 を4桁ゼロ埋め）
+  const lastRow = sheet.getLastRow();
+  const staffId = "E" + String(lastRow).padStart(4, "0");
+
   sheet.appendRow([payload.lineUserId, staffId, staffName]);
 
-  return jsonResponse({ success: true, staffId, staffName });
+  return jsonResponse({ success: true, staffId, staffName, linked: false });
 }
 
 // =====================
