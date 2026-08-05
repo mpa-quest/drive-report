@@ -472,12 +472,14 @@ function parseWorkingHoursValue_(raw) {
 }
 
 // 明細行（rows）の合計稼働時間を時間（小数）で算出
+// ※ 分単位の合計を60で割ると割り切れない小数（例：80分→1.3333...）になるため、
+//   小数第2位に丸める（請求書の「数量」列にそのまま表示されるため）
 function getTotalWorkedHours_(rows) {
   let totalMinutes = 0;
   rows.forEach(function(r) {
     totalMinutes += parseWorkingHoursValue_(r.workingHours);
   });
-  return totalMinutes / 60;
+  return Math.round((totalMinutes / 60) * 100) / 100;
 }
 
 // スタッフの時間超過分：basicHoursは「1日あたりの基準勤務時間」のため、
