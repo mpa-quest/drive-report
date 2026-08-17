@@ -454,6 +454,10 @@
         <th>ガソリン代</th>
         <th>燃料代</th>
         <th>パーキング代</th>
+        <th>タクシー代</th>
+        <th>宿泊関連費用</th>
+        <th>お品代</th>
+        <th>その他</th>
         <th>備考</th>
       </tr>
     </thead>
@@ -714,9 +718,13 @@
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
         r.distance, r.trainCommute,
-        fmtExpense(r.gasoline,  r.gasolineNC),
-        fmtExpense(r.fuel,      r.fuelNC),
-        fmtExpense(r.parking,   r.parkingNC),
+        fmtExpense(r.gasoline, r.gasolineNC),
+        fmtExpense(r.fuel,     r.fuelNC),
+        fmtExpense(r.parking,  r.parkingNC),
+        fmtExpense(r.taxi,     r.taxiNC),
+        fmtExpense(r.hotel,    r.hotelNC),
+        fmtExpense(r.gift,     r.giftNC),
+        fmtExpense(r.other,    r.otherNC),
         r.memo,
       ];
       cells.forEach(val => {
@@ -736,7 +744,7 @@
       if (!isNaN(train) && train > 0) totalTrain += train;
 
       // 立替費用合計（会社タブ：請求不要除外、スタッフタブ：クレカ払いは除外・それ以外は全額含む）
-      [["gasoline","gasolineNC"], ["fuel","fuelNC"], ["parking","parkingNC"]].forEach(([key, ncKey]) => {
+      [["gasoline","gasolineNC"], ["fuel","fuelNC"], ["parking","parkingNC"], ["taxi","taxiNC"], ["hotel","hotelNC"], ["gift","giftNC"], ["other","otherNC"]].forEach(([key, ncKey]) => {
         if (mode === "company" && r[ncKey] === "1") return; // 会社タブは請求不要スキップ
         if (mode !== "company" && r.companyCardPayment === "1") return; // スタッフタブはクレカ払いスキップ
         const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
@@ -752,7 +760,7 @@
         <td colspan="14">合計（${records.length} 件）</td>
         <td>${totalDistance.toFixed(0)} km</td>
         <td>${totalTrain > 0 ? totalTrain.toLocaleString() + " 円" : "—"}</td>
-        <td></td><td></td><td></td><td></td>
+        <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
       </tr>`;
 
     // サマリー
