@@ -347,7 +347,8 @@ function submitReport(payload) {
   setCol("会社クレカ払い", payload.companyCardPayment ? "1" : "");
 
   // 立替費用を転記（1報告につき1行・項目ごとに金額とチェックを横並び）
-  const expenseItems = ["ガソリン代", "燃料代", "パーキング代"];
+  // 「その他」も自由入力にせず、他の項目と同じ固定項目の1つとして扱う（項目名列は持たない）
+  const expenseItems = ["ガソリン代", "燃料代", "パーキング代", "タクシー代", "宿泊関連費用", "お品代", "その他"];
   (payload.expenses || []).forEach(function(exp) {
     if (!exp.item || !expenseItems.includes(exp.item)) return;
     setCol(exp.item,              exp.amount   || "");
@@ -481,6 +482,14 @@ function buildRecord(dispRow, cm) {
     fuelNC:        g("燃料代_チェック"),
     parking:       g("パーキング代"),
     parkingNC:     g("パーキング代_チェック"),
+    taxi:          g("タクシー代"),
+    taxiNC:        g("タクシー代_チェック"),
+    hotel:         g("宿泊関連費用"),
+    hotelNC:       g("宿泊関連費用_チェック"),
+    gift:          g("お品代"),
+    giftNC:        g("お品代_チェック"),
+    other:         g("その他"),
+    otherNC:       g("その他_チェック"),
     memo:          g("備考"),
   };
 }
