@@ -1099,7 +1099,8 @@
 
   // ── 立替費用 ──
   let expenseRowCount = 0;
-  const EXPENSE_ITEMS = ["ガソリン代", "燃料代", "パーキング代"];
+  // 「その他」は自由入力にせず、他の項目と同じ固定の選択肢の1つとして扱う（同じ項目名の記録は月内で小計される）
+  const EXPENSE_ITEMS = ["ガソリン代", "燃料代", "パーキング代", "タクシー代", "宿泊関連費用", "お品代", "その他"];
 
   function addExpenseRow() {
     expenseRowCount++;
@@ -1159,12 +1160,12 @@
     const rows = document.querySelectorAll(".expense-row");
     const expenses = [];
     for (const row of rows) {
-      const id       = row.dataset.id;
-      const item     = document.getElementById("expItem_"     + id)?.value || "";
-      const amount   = document.getElementById("expAmount_"   + id)?.value || "";
-      const noCharge = document.getElementById("expNoCharge_" + id)?.checked || false;
-      const fileInput= document.getElementById("expFile_"     + id);
-      const files    = fileInput ? Array.from(fileInput.files) : [];
+      const id        = row.dataset.id;
+      const item      = document.getElementById("expItem_"     + id)?.value || "";
+      const amount    = document.getElementById("expAmount_"   + id)?.value || "";
+      const noCharge  = document.getElementById("expNoCharge_" + id)?.checked || false;
+      const fileInput = document.getElementById("expFile_"     + id);
+      const files     = fileInput ? Array.from(fileInput.files) : [];
 
       // 画像をBase64化（長辺1200pxにリサイズ）
       const images = await Promise.all(files.map(file => resizeAndEncode(file)));
