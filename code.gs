@@ -290,6 +290,40 @@ function getRecords(params) {
 // =====================
 // 運行記録の保存
 // =====================
+
+// 稼働時間の文字列（"N時間M分" / "H:MM" / Dateなど）を分に変換
+function parseWorkingHoursToMinutes_(raw) {
+  if (raw instanceof Date) {
+    const tz = Session.getScriptTimeZone();
+    const h = parseInt(Utilities.formatDate(raw, tz, "H"), 10);
+    const m = parseInt(Utilities.formatDate(raw, tz, "m"), 10);
+    return h * 60 + m;
+  }
+  const s = String(raw || "").trim();
+  if (!s) return 0;
+  const jpH = s.match(/(\d+)時間/);
+  const jpM = s.match(/(\d+)分/);
+  if (jpH || jpM) {
+    return (jpH ? parseInt(jpH[1], 10) : 0) * 60 + (jpM ? parseInt(jpM[1], 10) : 0);
+  }
+  const hm = s.match(/^(\d+):(\d{2})/);
+  if (hm) return parseInt(hm[1], 10) * 60 + parseInt(hm[2], 10);
+  return 0;
+}
+
+// 分 → "N時間M分" 表記（0分の場合は分を省略）
+function formatMinutesAsHM_(totalMinutes) {
+  const m = ((totalMinutes % 60) + 60) % 60;
+  const h = Math.floor(totalMinutes / 60);
+  return m === 0 ? (h + "時間") : (h + "時間" + m + "分");
+}
+
+// 稼働時間（分）を15分単位で切り捨て（スポットの会社向け）
+//   0〜14分→0分／15〜29分→15分／30〜44分→30分／45〜59分→45分、の繰り返し
+function floorMinutesToQuarterHour_(totalMinutes) {
+  return Math.floor(totalMinutes / 15) * 15;
+}
+
 function submitReport(payload) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName("運行記録");
@@ -297,17 +331,29 @@ function submitReport(payload) {
   const now       = new Date();
   const timestamp = Utilities.formatDate(now, "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
 
-  // 会社名を先に取得して ID_名前 形式を作成
+  // 会社名を先に取得して ID_名前 形式を作成（あわせて分類「スポット」判定用に分類も取得する）
   const companySheet = ss.getSheetByName("会社マスタ");
   const companyData  = companySheet.getDataRange().getValues();
+  const companyHeaderMap = {};
+  (companyData[0] || []).forEach(function(h, idx) { companyHeaderMap[String(h).trim()] = idx; });
+  const categoryColIdx = companyHeaderMap["分類"];
   let companyLabel   = payload.company;
+  let companyCategory = "";
   for (let i = 1; i < companyData.length; i++) {
     if (String(companyData[i][0]).trim() === String(payload.company).trim()) {
       companyLabel = payload.company + "_" + companyData[i][1];
+      companyCategory = categoryColIdx !== undefined ? String(companyData[i][categoryColIdx] || "").trim() : "";
       break;
     }
   }
   payload.companyLabel = companyLabel;
+
+  // スポットの会社の場合、稼働時間を15分単位で切り捨てて記録する（専属は従来通り、そのままの値を記録）
+  if (companyCategory === "スポット") {
+    const rawMinutes = parseWorkingHoursToMinutes_(payload.workingHours);
+    const flooredMinutes = floorMinutesToQuarterHour_(rawMinutes);
+    payload.workingHours = formatMinutesAsHM_(flooredMinutes);
+  }
 
   // ヘッダー行から列マップを取得して動的に行を構成
   const colMap  = getColumnMap(sheet);
