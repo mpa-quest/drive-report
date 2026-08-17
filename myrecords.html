@@ -320,6 +320,10 @@
         <th>ガソリン代</th>
         <th>燃料代</th>
         <th>パーキング代</th>
+        <th>タクシー代</th>
+        <th>宿泊関連費用</th>
+        <th>お品代</th>
+        <th>その他</th>
         <th>備考</th>
       </tr>
     </thead>
@@ -477,9 +481,13 @@
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
         r.distance, r.trainCommute,
-        fmtExpense(r.gasoline,  r.gasolineNC),
-        fmtExpense(r.fuel,      r.fuelNC),
-        fmtExpense(r.parking,   r.parkingNC),
+        fmtExpense(r.gasoline, r.gasolineNC),
+        fmtExpense(r.fuel,     r.fuelNC),
+        fmtExpense(r.parking,  r.parkingNC),
+        fmtExpense(r.taxi,     r.taxiNC),
+        fmtExpense(r.hotel,    r.hotelNC),
+        fmtExpense(r.gift,     r.giftNC),
+        fmtExpense(r.other,    r.otherNC),
         r.memo,
       ];
       cells.forEach(val => {
@@ -498,7 +506,7 @@
 
       // 立替費用合計（全額・請求不要含む。クレカ払いは除外）
       if (r.companyCardPayment !== "1") {
-        ["gasoline", "fuel", "parking"].forEach(key => {
+        ["gasoline", "fuel", "parking", "taxi", "hotel", "gift", "other"].forEach(key => {
           const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
           if (!isNaN(v) && v > 0) totalExpense += v;
         });
@@ -513,7 +521,7 @@
         <td colspan="14">合計（${records.length} 件）</td>
         <td>${totalDistance.toFixed(0)} km</td>
         <td>${totalTrain > 0 ? totalTrain.toLocaleString() + " 円" : "—"}</td>
-        <td></td><td></td><td></td><td></td>
+        <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
       </tr>`;
 
     // サマリー
