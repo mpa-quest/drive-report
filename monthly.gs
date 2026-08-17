@@ -102,7 +102,7 @@ function runMonthlyProcess() {
     // ① ドライバー請求書を生成
     Logger.log("--- ① ドライバー請求書の生成開始 ---");
     SpreadsheetApp.getActiveSpreadsheet().toast("① ドライバー請求書を生成中...", "🚗 月初処理", 5);
-    generateStaffInvoices(records, staffMap, targetLabel, paymentDate, TEMPLATE_ID, staffMonthFolder);
+    generateStaffInvoices(records, staffMap, companyMap, targetLabel, paymentDate, TEMPLATE_ID, staffMonthFolder);
     Logger.log("① ドライバー請求書の生成完了");
 
     // ② 運行管理表・お客様請求書を生成
@@ -174,6 +174,14 @@ function getMonthlyRecords(db, year, month) {
         fuelNC:             ["1", 1, true].includes(row[cm["燃料代_チェック"]]),
         parking:            row[cm["パーキング代"]],
         parkingNC:          ["1", 1, true].includes(row[cm["パーキング代_チェック"]]),
+        taxi:               row[cm["タクシー代"]],
+        taxiNC:             ["1", 1, true].includes(row[cm["タクシー代_チェック"]]),
+        hotel:              row[cm["宿泊関連費用"]],
+        hotelNC:            ["1", 1, true].includes(row[cm["宿泊関連費用_チェック"]]),
+        gift:               row[cm["お品代"]],
+        giftNC:             ["1", 1, true].includes(row[cm["お品代_チェック"]]),
+        other:              row[cm["その他"]],
+        otherNC:            ["1", 1, true].includes(row[cm["その他_チェック"]]),
       });
     }
   }
@@ -509,6 +517,28 @@ function ceilToQuarterHour_(hours) {
   return Math.ceil(hours * 4) / 4;
 }
 
+// 時間の端数処理：15分単位で切り捨て（専属・スポット共通のルール）
+//   0〜14分→0分／15〜29分→15分／30〜44分→30分／45〜59分→45分、の繰り返し
+function floorToQuarterHour_(hours) {
+  return Math.floor(hours * 4) / 4;
+}
+
+// スタッフの時間超過判定用の月合計稼働時間：
+//   会社の分類が「スポット」の記録　　　→ 記録（運行記録）1件ごとに稼働時間を15分単位で切り捨ててから加算
+//     （例：9:00-18:05＝9時間5分の記録 → 9時間として計上。端数の5分は月合計に加算されない）
+//   会社の分類が「専属」（未設定含む）の記録 → 稼働時間をそのまま（切り捨てずに）加算し、月合計の時点でまとめて切り捨てる
+// ※ 専属・スポット両方の会社を掛け持ちするスタッフの場合、記録ごとに判定した値を合算してから基本時間と比較する
+function getStaffOvertimeBaseHours_(rows, companyMap) {
+  let totalHours = 0;
+  (rows || []).forEach(function(r) {
+    const hours = parseWorkingHoursValue_(r.workingHours) / 60;
+    const company = companyMap ? companyMap[r.company] : undefined;
+    const isSpotCompany = !!company && company.category === "スポット";
+    totalHours += isSpotCompany ? floorToQuarterHour_(hours) : hours;
+  });
+  return totalHours;
+}
+
 // 小数の時間（例：23.25）を「23時間15分」のような表示用文字列に変換する
 // ※ 15分単位（0.25時間刻み）で丸め済みの値を渡す前提。分が0のときは「〇時間」のみ表示する
 function formatHoursAsHM_(hours) {
@@ -581,14 +611,19 @@ function buildCompanyInvoiceLineItems_(company, rows) {
     baseItems.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: toTaxExcluded_(trainTotal), taxAmountOverride: taxPortionOfIncluded_(trainTotal) });
   }
 
-  // ③ 立替費用（ガソリン代・燃料代・パーキング代）：お客様への請求不要チェックは除外
-  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0 };
+  // ③ 立替費用（ガソリン代・燃料代・パーキング代・タクシー代・宿泊関連費用・お品代・その他）：お客様への請求不要チェックは除外
+  // ※ 同じ項目は月内で合算して1行にまとめる（従来のガソリン代等と同じ考え方。「その他」も固定項目の1つとして同様に扱う）
+  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0, "タクシー代": 0, "宿泊関連費用": 0, "お品代": 0, "その他": 0 };
   rows.forEach(function(r) {
-    if (!r.gasolineNC) expenseTotals["ガソリン代"]   += parseFloat(r.gasoline) || 0;
-    if (!r.fuelNC)     expenseTotals["燃料代"]       += parseFloat(r.fuel)     || 0;
-    if (!r.parkingNC)  expenseTotals["パーキング代"] += parseFloat(r.parking)  || 0;
+    if (!r.gasolineNC) expenseTotals["ガソリン代"]     += parseFloat(r.gasoline) || 0;
+    if (!r.fuelNC)     expenseTotals["燃料代"]         += parseFloat(r.fuel)     || 0;
+    if (!r.parkingNC)  expenseTotals["パーキング代"]   += parseFloat(r.parking)  || 0;
+    if (!r.taxiNC)     expenseTotals["タクシー代"]     += parseFloat(r.taxi)     || 0;
+    if (!r.hotelNC)    expenseTotals["宿泊関連費用"]   += parseFloat(r.hotel)    || 0;
+    if (!r.giftNC)     expenseTotals["お品代"]         += parseFloat(r.gift)     || 0;
+    if (!r.otherNC)    expenseTotals["その他"]         += parseFloat(r.other)    || 0;
   });
-  ["ガソリン代", "燃料代", "パーキング代"].forEach(function(label) {
+  Object.keys(expenseTotals).forEach(function(label) {
     const taxIncluded = expenseTotals[label];
     if (taxIncluded > 0) {
       baseItems.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: toTaxExcluded_(taxIncluded), taxAmountOverride: taxPortionOfIncluded_(taxIncluded) });
@@ -641,7 +676,7 @@ function buildCompanyInvoiceLineItems_(company, rows) {
 // スタッフ向け請求書の明細行（運行代・交通費・立替費用・時間超過分）を組み立てる
 // ※ スタッフマスタの基本給・超過単価も会社マスタと同様、税抜で入力されている前提
 // ※ 表示順：運行代 → 交通費 → 立替費用（ガソリン代・燃料代・パーキング代） → 時間超過分
-function buildStaffInvoiceLineItems_(staff, rows) {
+function buildStaffInvoiceLineItems_(staff, rows, companyMap) {
   const items = [];
   if (!staff) return items;
 
@@ -691,16 +726,22 @@ function buildStaffInvoiceLineItems_(staff, rows) {
     items.push({ date: "", content: "交通費", qty: 1, unit: "式", unitPrice: isTaxable ? toTaxExcluded_(trainTotal) : trainTotal, taxAmountOverride: isTaxable ? taxPortionOfIncluded_(trainTotal) : undefined });
   }
 
-  // ③ 立替費用（ガソリン代・燃料代・パーキング代）：会社クレカ払いの場合は対象外
+  // ③ 立替費用（ガソリン代・燃料代・パーキング代・タクシー代・宿泊関連費用・お品代・その他）：会社クレカ払いの場合は対象外
   // フォーム入力は税込のまま。登録番号があれば税抜に変換、なければ税込金額をそのまま使う
-  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0 };
+  // ※ 同じ項目は月内で合算して1行にまとめる（「その他」も固定項目の1つとして同様に扱う）
+  // ※ スタッフへの立替精算は「お客様への請求不要」チェックの影響を受けない（他項目と同様、実費はそのまま精算する）
+  const expenseTotals = { "ガソリン代": 0, "燃料代": 0, "パーキング代": 0, "タクシー代": 0, "宿泊関連費用": 0, "お品代": 0, "その他": 0 };
   rows.forEach(function(r) {
     if (r.companyCardPayment) return;
     expenseTotals["ガソリン代"]   += parseFloat(r.gasoline) || 0;
     expenseTotals["燃料代"]       += parseFloat(r.fuel)     || 0;
     expenseTotals["パーキング代"] += parseFloat(r.parking)  || 0;
+    expenseTotals["タクシー代"]   += parseFloat(r.taxi)     || 0;
+    expenseTotals["宿泊関連費用"] += parseFloat(r.hotel)    || 0;
+    expenseTotals["お品代"]       += parseFloat(r.gift)     || 0;
+    expenseTotals["その他"]       += parseFloat(r.other)    || 0;
   });
-  ["ガソリン代", "燃料代", "パーキング代"].forEach(function(label) {
+  Object.keys(expenseTotals).forEach(function(label) {
     const taxIncluded = expenseTotals[label];
     if (taxIncluded > 0) {
       items.push({ date: "", content: label, qty: 1, unit: "式", unitPrice: isTaxable ? toTaxExcluded_(taxIncluded) : taxIncluded, taxAmountOverride: isTaxable ? taxPortionOfIncluded_(taxIncluded) : undefined });
@@ -708,9 +749,14 @@ function buildStaffInvoiceLineItems_(staff, rows) {
   });
 
   // ④ 時間超過分（月間時間制かつ超過単価が設定されている場合のみ）
-  // ※ 会社マスタの「専属」と同じく月間契約時間として、月合計から1回だけ算出する
+  // ※ 端数の切り捨てルール自体は専属・スポット共通（15分単位切り捨て）だが、判定の単位が異なる：
+  //   専属（会社の分類が「専属」または未設定）→ 月合計稼働時間から基本時間を引いた「超過分」を15分単位で切り捨てる
+  //   スポット（会社の分類が「スポット」）　　→ 記録（運行記録）1件ごとに稼働時間を15分単位で切り捨ててから月合計に積み上げる
+  //     例：9:00-18:05（9時間5分）の記録 → 端数の5分は切り捨てられ、9時間として月合計に加算される
+  //   専属・スポット両方の会社を掛け持ちしている場合は、記録ごとに判定した値を合算してから基本時間と比較する
   if (unit === "月間時間制" && hasOverRate && basicHours) {
-    const overHours = ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
+    const overtimeBaseHours = getStaffOvertimeBaseHours_(rows, companyMap);
+    const overHours = floorToQuarterHour_(Math.max(0, overtimeBaseHours - basicHours));
     if (overHours > 0) {
       items.push({ date: "", content: "時間超過分" + formatHoursAsHM_(overHours), qty: overHours, unit: "時間", unitPrice: staff.overRate });
     }
@@ -820,7 +866,7 @@ function calculatePaymentDate_(targetYear, targetMonth, closingDayType) {
 // =====================
 // ① ドライバー請求書を生成
 // =====================
-function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, templateId, folder) {
+function generateStaffInvoices(records, staffMap, companyMap, targetLabel, paymentDate, templateId, folder) {
   // 発行日（マクロ実行日）・請求番号用月キー（YYYYMM形式）
   const now            = new Date();
   const issueDate      = Utilities.formatDate(now, "Asia/Tokyo", "yyyy年MM月dd日");
@@ -874,7 +920,7 @@ function generateStaffInvoices(records, staffMap, targetLabel, paymentDate, temp
     sheet.getRange("C16").setValue(paymentDate);
 
     // 明細行を書き込み（小計・消費税・合計もこの中でGAS側が直接計算して書き込む）
-    writeDetailRows(sheet, rows, "staff", staff, targetLabel);
+    writeDetailRows(sheet, rows, "staff", staff, targetLabel, companyMap);
 
     // スタッフ請求書シートのみPDF出力
     savePdfSingleSheet(ss, copy, fileName, folder, "スタッフ請求書");
@@ -1096,7 +1142,7 @@ function replaceInSheet(sheet, placeholder, value) {
 // =====================
 // 明細行を書き込み（不具合改修済）
 // =====================
-function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
+function writeDetailRows(sheet, rows, type, masterRecord, targetLabel, companyMap) {
   // 「日付」ヘッダーの次の行を明細開始行として探す（全列スキャン・完全一致）
   const data = sheet.getDataRange().getValues();
   let startRow = -1;
@@ -1129,7 +1175,7 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
   if (type === "company" || type === "staff") {
     const items = (type === "company")
       ? buildCompanyInvoiceLineItems_(masterRecord, rows)
-      : buildStaffInvoiceLineItems_(masterRecord, rows);
+      : buildStaffInvoiceLineItems_(masterRecord, rows, companyMap);
     const dateStr = getFirstDayOfMonthStr_(targetLabel); // すべて対象月の1日
     writeInvoiceLineItems_(sheet, items, startRow, dateStr);
     writeInvoiceSummary_(sheet, items); // 小計・消費税・合計はテンプレート数式を使わずGAS側で直接計算
@@ -1169,6 +1215,10 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
       const gasolineVal = r.gasolineNC ? 0 : (parseFloat(r.gasoline) || 0);
       const fuelVal     = r.fuelNC     ? 0 : (parseFloat(r.fuel)     || 0);
       const parkingVal  = r.parkingNC  ? 0 : (parseFloat(r.parking)  || 0);
+      const taxiVal     = r.taxiNC     ? 0 : (parseFloat(r.taxi)     || 0);
+      const hotelVal    = r.hotelNC    ? 0 : (parseFloat(r.hotel)    || 0);
+      const giftVal     = r.giftNC     ? 0 : (parseFloat(r.gift)     || 0);
+      const otherVal    = r.otherNC    ? 0 : (parseFloat(r.other)    || 0);
 
       // テンプレートのヘッダー名で動的に列マップを取得して書き込む（列順変更に対応）
       // ヘッダー名で列位置を動的取得しつつ、書き込みは行単位でまとめて実行（高速化）
@@ -1195,6 +1245,10 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
         ["ガソリン代",   gasolineVal || ""],
         ["燃料代",       fuelVal     || ""],
         ["パーキング代", parkingVal  || ""],
+        ["タクシー代",   taxiVal     || ""],
+        ["宿泊関連費用", hotelVal    || ""],
+        ["お品代",       giftVal     || ""],
+        ["その他",       otherVal    || ""],
         ["備考",         r.memo],
       ];
 
@@ -1224,7 +1278,7 @@ function writeDetailRows(sheet, rows, type, masterRecord, targetLabel) {
     Logger.log("    合計行を設定：" + targetTotalRow + "行目（データ " + startRow + "〜" + lastDataRow + "行）");
 
     // ヘッダー名で列番号を動的取得してSUM式を設定（kanriCmを再利用・ヘッダー行は startRow-1）
-    const sumTargets = ["電車通勤", "ガソリン代", "燃料代", "パーキング代"];
+    const sumTargets = ["電車通勤", "ガソリン代", "燃料代", "パーキング代", "タクシー代", "宿泊関連費用", "お品代", "その他"];
     sumTargets.forEach(function(colName) {
       if (kanriCm[colName] === undefined) return;
       const colIdx    = kanriCm[colName]; // buildColMapは既に1-indexed
@@ -1385,13 +1439,14 @@ function runStep1() {
   SpreadsheetApp.getActiveSpreadsheet().toast("① ドライバー請求書を生成中...", "🚗 月初処理", 5);
 
   try {
-    const records  = getMonthlyRecords(db, ym.year, ym.month);
-    const staffMap = getStaffMap(db);
+    const records   = getMonthlyRecords(db, ym.year, ym.month);
+    const staffMap   = getStaffMap(db);
+    const companyMap = getCompanyMap(db); // スタッフの時間超過分の専属／スポット判定に会社マスタの「分類」を使うため取得
     Logger.log("運行記録：" + records.length + " 件　スタッフ：" + Object.keys(staffMap).length + " 名");
 
     const staffFolder = getOrCreateFolder(props.getProperty("STAFF_FOLDER_ID"), targetLabel);
     clearFolderFiles_(staffFolder, "スタッフ請求書");
-    generateStaffInvoices(records, staffMap, targetLabel, paymentDate, props.getProperty("TEMPLATE_SPREADSHEET_ID"), staffFolder);
+    generateStaffInvoices(records, staffMap, companyMap, targetLabel, paymentDate, props.getProperty("TEMPLATE_SPREADSHEET_ID"), staffFolder);
 
     Logger.log("=== ① ドライバー請求書生成完了：" + targetLabel + " ===");
     SpreadsheetApp.getUi().alert("✅ 処理が完了しました。\n\n① ドライバー請求書の生成が完了しました。\n対象月：" + targetLabel);
