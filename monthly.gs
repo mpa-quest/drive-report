@@ -494,6 +494,11 @@ function getTotalWorkedHours_(rows) {
 // 月合計稼働時間から一括で引くのではなく、日ごとの稼働時間（同日複数レコードは合算）が
 // basicHoursを超えた分だけを日単位で積み上げて合計する
 // （例：基本時間9時間・6/4が11時間・6/17が10時間30分の場合 → 2時間＋1時間30分＝3時間30分）
+// ※ 2026-08-17付：稼働時間はフォーム送信時点（code.gs）でスポットの会社なら
+//    既に15分単位で切り捨て済みの値が記録されるため、ここでの日単位の追加丸め処理は行わず、
+//    日合計から基本時間を引いた分をそのまま超過時間として計上する。
+//    （今回の変更より前に送信された記録は稼働時間が丸められていないため、それらの記録が
+//      含まれる月は端数がそのまま反映される点に注意）
 function getDailyOvertimeHours_(rows, basicHours) {
   const dailyMinutes = {};
   (rows || []).forEach(function(r) {
@@ -506,8 +511,7 @@ function getDailyOvertimeHours_(rows, basicHours) {
   let overHoursTotal = 0;
   Object.keys(dailyMinutes).forEach(function(key) {
     const dayHours   = dailyMinutes[key] / 60;
-    const dayOverRaw = Math.max(0, dayHours - basicHours);
-    overHoursTotal += ceilToQuarterHour_(dayOverRaw); // 日ごとに15分単位で切り上げてから合算
+    overHoursTotal += Math.max(0, dayHours - basicHours);
   });
   return overHoursTotal;
 }
@@ -632,10 +636,11 @@ function buildCompanyInvoiceLineItems_(company, rows) {
 
   // ④ 時間超過分（超過単価が設定されている場合のみ）
   // ※ 「専属」＝月間契約時間として月合計から算出／「スポット」＝日ごとの基準時間として日単位で積み上げる
+  // ※ 専属の端数処理は2026-08-17付で15分単位「切り上げ」から「切り捨て」に変更（スタッフ請求書側と同じルールに統一）
   if (hasOverRate && basicHours) {
     const overHours = (company.category === "スポット")
       ? getDailyOvertimeHours_(rows, basicHours)
-      : ceilToQuarterHour_(Math.max(0, totalHours - basicHours));
+      : floorToQuarterHour_(Math.max(0, totalHours - basicHours));
     if (overHours > 0) {
       baseItems.push({ date: "", content: "時間超過分" + formatHoursAsHM_(overHours), qty: overHours, unit: "時間", unitPrice: company.overRate });
     }
