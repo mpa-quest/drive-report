@@ -311,11 +311,11 @@ function parseWorkingHoursToMinutes_(raw) {
   return 0;
 }
 
-// 分 → "N時間M分" 表記（0分の場合は分を省略）
+// 分 → "H:MM" 表記（フォーム側の稼働時間表示・保存形式に合わせる）
 function formatMinutesAsHM_(totalMinutes) {
   const m = ((totalMinutes % 60) + 60) % 60;
   const h = Math.floor(totalMinutes / 60);
-  return m === 0 ? (h + "時間") : (h + "時間" + m + "分");
+  return h + ":" + String(m).padStart(2, "0");
 }
 
 // 稼働時間（分）を15分単位で切り捨て（スポットの会社向け）
