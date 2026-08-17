@@ -437,6 +437,10 @@
           <th>ガソリン代</th>
           <th>燃料代</th>
           <th>パーキング代</th>
+          <th>タクシー代</th>
+          <th>宿泊関連費用</th>
+          <th>お品代</th>
+          <th>その他</th>
           <th>備考</th>
         </tr>
       </thead>
@@ -649,9 +653,13 @@
         r.passenger, r.purpose,
         r.meterBefore, r.meterAfter,
         r.distance, r.trainCommute,
-        fmtExpenseCustomer(r.gasoline,  r.gasolineNC),
-        fmtExpenseCustomer(r.fuel,      r.fuelNC),
-        fmtExpenseCustomer(r.parking,   r.parkingNC),
+        fmtExpenseCustomer(r.gasoline, r.gasolineNC),
+        fmtExpenseCustomer(r.fuel,     r.fuelNC),
+        fmtExpenseCustomer(r.parking,  r.parkingNC),
+        fmtExpenseCustomer(r.taxi,     r.taxiNC),
+        fmtExpenseCustomer(r.hotel,    r.hotelNC),
+        fmtExpenseCustomer(r.gift,     r.giftNC),
+        fmtExpenseCustomer(r.other,    r.otherNC),
         r.memo,
       ];
       cells.forEach(val => {
@@ -668,7 +676,7 @@
       if (!isNaN(train) && train > 0) totalTrain += train;
 
       // 立替費用合計（請求不要は除外）
-      [["gasoline","gasolineNC"], ["fuel","fuelNC"], ["parking","parkingNC"]].forEach(([key, ncKey]) => {
+      [["gasoline","gasolineNC"], ["fuel","fuelNC"], ["parking","parkingNC"], ["taxi","taxiNC"], ["hotel","hotelNC"], ["gift","giftNC"], ["other","otherNC"]].forEach(([key, ncKey]) => {
         if (r[ncKey] === "1") return; // 請求不要はスキップ
         const v = parseFloat(String(r[key] || "").replace(/[^0-9.]/g, ""));
         if (!isNaN(v) && v > 0) totalExpense += v;
@@ -682,7 +690,7 @@
         <td colspan="14">合計（${records.length} 件）</td>
         <td>${totalDistance.toFixed(0)} km</td>
         <td>${totalTrain > 0 ? totalTrain.toLocaleString() + " 円" : "—"}</td>
-        <td></td><td></td><td></td><td></td>
+        <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
       </tr>`;
 
     document.getElementById("sumCount").textContent    = records.length;
