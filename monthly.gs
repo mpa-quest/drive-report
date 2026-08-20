@@ -575,6 +575,19 @@ function getFirstDayOfMonthStr_(targetLabel) {
   return y + "/" + mo + "/01";
 }
 
+// 記録配列から稼働日のユニーク日数を数える（スポットの会社の運行代・日単位計上に使用）
+function getUniqueDayCount_(rows) {
+  const days = {};
+  (rows || []).forEach(function(r) {
+    if (!r.date) return;
+    const d = (r.date instanceof Date) ? r.date : new Date(r.date);
+    if (isNaN(d.getTime())) return;
+    const key = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy/MM/dd");
+    days[key] = true;
+  });
+  return Object.keys(days).length;
+}
+
 // 会社向け請求書の明細行（運行代・交通費・立替費用・時間超過分）を組み立てる
 // ※ 会社マスタの基本料金・超過単価は税抜で入力されている前提
 // ※ 表示順：運行代 → 交通費 → 立替費用（ガソリン代・燃料代・パーキング代） → 時間超過分
@@ -590,6 +603,10 @@ function buildCompanyInvoiceLineItems_(company, rows) {
   const isConsolidated = pattern === BILLING_PATTERN.CONSOLIDATED; // 会社：1行にまとめる
   const isHolidayAdd   = pattern === BILLING_PATTERN.HOLIDAY_A;    // 会社：休日運行費を別行加算
 
+  // ① 運行代の数量：専属は日数に関わらず固定1式／スポットは稼働したユニーク日数分（2026-08-17確定）
+  //   例：基本料金30,000円・2日稼働 → 数量：2、単価：30,000円
+  const basicFeeQty = (company.category === "スポット") ? (getUniqueDayCount_(rows) || 1) : 1;
+
   // 統合パターンの場合は明細を一旦別配列に貯めて、最後に合算した1行に差し替える
   const baseItems = [];
 
@@ -603,10 +620,10 @@ function buildCompanyInvoiceLineItems_(company, rows) {
       if (!basicHours) {
         Logger.log("  ⚠️ 基本時間が未設定のため実額制の按分ができず、基本料金を固定額として計上：" + company.companyId);
       }
-      baseItems.push({ date: "", content: "運行管理費", qty: 1, unit: "式", unitPrice: company.basicFee });
+      baseItems.push({ date: "", content: "運行管理費", qty: basicFeeQty, unit: "式", unitPrice: company.basicFee });
     }
   } else if (applyBasicFee) {
-    baseItems.push({ date: "", content: "運行管理費", qty: 1, unit: "式", unitPrice: company.basicFee });
+    baseItems.push({ date: "", content: "運行管理費", qty: basicFeeQty, unit: "式", unitPrice: company.basicFee });
   }
 
   // ② 交通費（電車通勤）：お客様への請求不要チェックの概念はないため常に計上
